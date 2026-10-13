@@ -31,7 +31,31 @@ namespace LanPad.UI
         readonly ToastForm toast = new ToastForm();
         readonly Timer refreshTimer;
 
-        Panel menuPage, hostPage, joinListPage, joinedPage;
+        Panel menuPage, hostPage, joinListPage, joinedPage, settingsPage, controlsPage;
+
+        // Controls page: keys being edited per layout, saved on Save
+        DarkComboBox layoutBox;
+        readonly Dictionary<PadAction, KeyButton> keyButtons = new Dictionary<PadAction, KeyButton>();
+        KeyButton toggleKeyButton;
+        ToggleSwitch ownKeysSwitch;
+        Label controlsStatus, layoutInfo, joinedHotkeys;
+        readonly Dictionary<ControlLayout, KeyMap> editKeys = new Dictionary<ControlLayout, KeyMap>();
+        Keys editToggleKey;
+        Panel controlsReturn;
+        List<GameProfile> joinGames; // this PC's game list, for "use my own keys"
+
+        // smooth-play tweaks (Tweaks) for the running host / join session
+        IDisposable hostTweaks, joinTweaks;
+
+        // Settings page
+        DarkComboBox fpsBox, bitrateBox, encoderBox, viewerBox, resendBox, cornerBox, opacityBox;
+        ToggleSwitch highPrioritySwitch, noThrottlingSwitch, keepAwakeSwitch, autoPadSwitch, fullscreenSwitch, swallowMouseSwitch, overlaySwitch;
+
+        // key cheat sheet on top of the game (joined PC)
+        readonly KeyOverlay overlay = new KeyOverlay();
+        bool overlayShown; // starts as the Overlay setting at each join; Shift + toggle key flips it
+        readonly Timer previewTimer = new Timer { Interval = 6000 };
+        Label settingsStatus;
 
         // Host
         VirtualPads pads;
@@ -85,11 +109,14 @@ namespace LanPad.UI
             BuildHostPage();
             BuildJoinListPage();
             BuildJoinedPage();
+            BuildSettingsPage();
+            BuildControlsPage();
             ShowPage(menuPage);
 
             refreshTimer = new Timer { Interval = 500 };
             refreshTimer.Tick += (s, e) => RefreshUi();
             refreshTimer.Start();
+            previewTimer.Tick += EndPreview;
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -108,10 +135,12 @@ namespace LanPad.UI
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             refreshTimer.Stop();
+            previewTimer.Stop();
             LeaveGame(null);
             StopDiscovery();
             StopHost(false);
             toast.Dispose();
+            overlay.Dispose();
             base.OnFormClosing(e);
         }
 
@@ -119,7 +148,7 @@ namespace LanPad.UI
 
         void ShowPage(Panel page)
         {
-            foreach (var p in new[] { menuPage, hostPage, joinListPage, joinedPage })
+            foreach (var p in new[] { menuPage, hostPage, joinListPage, joinedPage, settingsPage, controlsPage })
                 p.Visible = p == page;
         }
 
@@ -217,6 +246,10 @@ namespace LanPad.UI
                 if (c.Tag != Fill) continue;
                 int w = Math.Max(100, width - c.Margin.Horizontal);
                 if (c is Label) { if (c.MaximumSize.Width != w) c.MaximumSize = new Size(w, 0); }
+                else if (c.AutoSize) // grows with its content in height only
+                {
+                    if (c.MinimumSize.Width != w) { c.MinimumSize = new Size(w, 0); c.MaximumSize = new Size(w, 0); }
+                }
                 else if (c.Width != w) c.Width = w;
             }
         }
@@ -302,6 +335,12 @@ namespace LanPad.UI
                                   "3.  In the game each joined PC is one Xbox controller. F12 = Pad mode on/off, Ctrl+F12 = leave.",
                                   10f, Theme.Text));
 
+            var settings = NewButton("⚙  Settings", (s, e) => OpenSettings(), ButtonKind.Secondary, 150);
+            var controls = NewButton("⌨  Controls", (s, e) => OpenControls(menuPage), ButtonKind.Secondary, 150);
+            settings.Margin = new Padding(0, 16, 10, 0);
+            controls.Margin = new Padding(0, 16, 0, 0);
+            col.Controls.Add(Row(settings, controls));
+
             if (warnings.Count > 0)
             {
                 col.Controls.Add(Section("Settings warnings (lanpad.ini)", 18));
@@ -310,6 +349,407 @@ namespace LanPad.UI
             var paths = Para($"Settings: {AppPaths.ConfigFile}\nLog: {Log.FilePath}", 8.5f, Theme.Blend(Theme.Muted, Theme.Back, 0.25f));
             paths.Margin = new Padding(0, 18, 0, 0);
             col.Controls.Add(paths);
+        }
+
+        // ---------------------------------------------------------------- settings
+
+        /// <summary>Item of a settings drop-down: shown text + the value saved to lanpad.ini.</summary>
+        sealed class Choice
+        {
+            public readonly string Text;
+            public readonly object Value;
+            public Choice(object value, string text) { Value = value; Text = text; }
+            public override string ToString() => Text;
+        }
+
+        static DarkComboBox ChoiceBox(int width, params Choice[] choices)
+        {
+            var box = new DarkComboBox { Width = width, Margin = new Padding(0, 2, 16, 4) };
+            box.Items.AddRange(choices);
+            return box;
+        }
+
+        /// <summary>Selects the choice with <paramref name="value"/>; a value not in the list is added as "custom".</summary>
+        static void SelectChoice(ComboBox box, object value, string customText)
+        {
+            foreach (Choice c in box.Items)
+                if (Equals(c.Value, value)) { box.SelectedItem = c; return; }
+            var extra = new Choice(value, customText);
+            box.Items.Add(extra);
+            box.SelectedItem = extra;
+        }
+
+        static T Value<T>(ComboBox box, T fallback) => box.SelectedItem is Choice c && c.Value is T v ? v : fallback;
+
+        /// <summary>Switch + title + one line of explanation; clicking the text flips the switch too.</summary>
+        static Control ToggleRow(string title, string detail, out ToggleSwitch toggle)
+        {
+            var sw = new ToggleSwitch { Margin = new Padding(0, 4, 14, 0) };
+            var t = NewLabel(title, 10.5f, FontStyle.Bold);
+            var d = NewLabel(detail, 9f, FontStyle.Regular, Theme.Muted);
+            t.Margin = d.Margin = new Padding(0);
+            d.MaximumSize = new Size(600, 0);
+            foreach (var l in new[] { t, d })
+            {
+                l.Cursor = Cursors.Hand;
+                l.Click += (s, e) => sw.Checked = !sw.Checked;
+            }
+            toggle = sw;
+            var row = Row(sw, Stack(t, d));
+            row.Margin = new Padding(0, 4, 0, 10);
+            return row;
+        }
+
+        /// <summary>Card that grows with its content; its width follows the column.</summary>
+        static CardPanel AutoCard(params Control[] controls)
+        {
+            // docked, so the card's padding applies and the card's height follows the content
+            var inner = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0) };
+            inner.Controls.AddRange(controls);
+            var card = new CardPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0, 0, 0, 4), Tag = Fill };
+            card.Padding = new Padding(18, 14, 18, 8);
+            card.Controls.Add(inner);
+            return card;
+        }
+
+        void BuildSettingsPage()
+        {
+            settingsPage = NewPage();
+            var col = Column(settingsPage);
+            col.Controls.Add(PageHeader(NewLabel("Settings", 18f, FontStyle.Bold),
+                NewLabel("Tweaks for smooth gameplay. Saved in lanpad.ini on this PC.", 10.5f, FontStyle.Regular, Theme.Muted)));
+
+            fpsBox = ChoiceBox(150,
+                new Choice(30, "30 fps"), new Choice(60, "60 fps (default)"), new Choice(90, "90 fps"), new Choice(120, "120 fps"));
+            bitrateBox = ChoiceBox(170,
+                new Choice(5000, "5 Mbps (Wi-Fi)"), new Choice(8000, "8 Mbps"), new Choice(10000, "10 Mbps"),
+                new Choice(15000, "15 Mbps (default)"), new Choice(20000, "20 Mbps"), new Choice(30000, "30 Mbps"),
+                new Choice(50000, "50 Mbps (sharpest)"));
+            encoderBox = ChoiceBox(260,
+                new Choice("auto", "Auto (AMD hardware, else CPU)"), new Choice("amf", "AMD hardware only"),
+                new Choice("x264", "CPU - x264, 720p 30 fps"));
+            col.Controls.Add(Section("Stream quality  ·  host PC"));
+            col.Controls.Add(AutoCard(
+                Row(Field("Frame rate", fpsBox), Field("Bitrate", bitrateBox), Field("Encoder", encoderBox)),
+                Hint("Picture stutters or breaks up? Lower the bitrate first, then the frame rate. " +
+                     "Changes apply the next time the stream starts.")));
+
+            resendBox = ChoiceBox(230,
+                new Choice(0, "Off"), new Choice(1, "1 extra copy"), new Choice(2, "2 extra copies (default)"),
+                new Choice(3, "3 extra copies"), new Choice(4, "4 extra copies (bad Wi-Fi)"));
+            col.Controls.Add(Section("Smooth gameplay  ·  host and joined PCs"));
+            col.Controls.Add(AutoCard(
+                ToggleRow("High priority",
+                    "LanPad, the stream encoder and the viewer get the CPU first, so a busy PC does not delay input or the picture.",
+                    out highPrioritySwitch),
+                ToggleRow("No background slow-down",
+                    "Stops Windows 11 from slowing LanPad, ffmpeg and mpv when they are behind the game, and uses a 1 ms timer.",
+                    out noThrottlingSwitch),
+                ToggleRow("Keep PC awake",
+                    "No sleep, screen saver or screen off during a game.",
+                    out keepAwakeSwitch),
+                Field("Controller packet repeat", resendBox),
+                Hint("Each button press is sent again 10 ms later, so a lost network packet does not drop or delay it.")));
+
+            viewerBox = ChoiceBox(200, new Choice("mpv", "mpv (lowest delay)"), new Choice("ffplay", "ffplay"));
+            col.Controls.Add(Section("Joined PC"));
+            col.Controls.Add(AutoCard(
+                Field("Stream viewer", viewerBox),
+                ToggleRow("Pad mode on after joining", "Your keyboard becomes the controller right away (F12 switches it).", out autoPadSwitch),
+                ToggleRow("Full screen stream", "Off = the host's screen opens in a window (for testing).", out fullscreenSwitch),
+                ToggleRow("Block mouse clicks in Pad mode", "Stops accidental clicks on the stream window.", out swallowMouseSwitch)));
+
+            cornerBox = ChoiceBox(170, new Choice("TopRight", "Top right"), new Choice("TopLeft", "Top left"),
+                new Choice("BottomRight", "Bottom right"), new Choice("BottomLeft", "Bottom left"));
+            opacityBox = ChoiceBox(190, new Choice(50, "50 % (see-through)"), new Choice(70, "70 %"),
+                new Choice(85, "85 % (default)"), new Choice(100, "100 % (solid)"));
+            var preview = NewButton("Preview", (s, e) => PreviewOverlay(), ButtonKind.Secondary, 110, 30);
+            preview.Margin = new Padding(0, 17, 0, 4);
+            col.Controls.Add(Section("Key cheat sheet  ·  joined PC"));
+            col.Controls.Add(AutoCard(
+                ToggleRow("Show the keys on top of the game",
+                    "Which key is which Xbox button, in a corner over the game. Shift+F12 hides / shows it while playing.",
+                    out overlaySwitch),
+                Row(Field("Position", cornerBox), Field("Opacity", opacityBox), preview)));
+
+            settingsStatus = NewLabel("", 9.5f, FontStyle.Regular, Theme.Good);
+            settingsStatus.Margin = new Padding(0, 13, 0, 0);
+            col.Controls.Add(Row(
+                NewButton("Save", (s, e) => SaveSettings(), ButtonKind.Primary, 130),
+                NewButton("Reset to defaults", (s, e) => { FillSettings(new LanPadConfig()); ShowSettingsStatus("Defaults loaded - click Save to keep them.", Theme.Warn); }, ButtonKind.Secondary, 170),
+                NewButton("Back", (s, e) => ShowPage(menuPage), ButtonKind.Ghost, 110),
+                settingsStatus));
+        }
+
+        static Label Hint(string text)
+        {
+            var l = NewLabel(text, 9f, FontStyle.Regular, Theme.Muted);
+            l.MaximumSize = new Size(680, 0);
+            l.Margin = new Padding(0, 2, 0, 8);
+            return l;
+        }
+
+        void OpenSettings()
+        {
+            FillSettings(cfg);
+            settingsStatus.Text = "";
+            ShowPage(settingsPage);
+        }
+
+        void FillSettings(LanPadConfig c)
+        {
+            SelectChoice(fpsBox, c.Fps, $"{c.Fps} fps (custom)");
+            SelectChoice(bitrateBox, c.BitrateKbps, $"{c.BitrateKbps / 1000.0:0.#} Mbps (custom)");
+            SelectChoice(encoderBox, c.Encoder, c.Encoder);
+            SelectChoice(viewerBox, c.Viewer, c.Viewer);
+            SelectChoice(resendBox, c.InputResend, $"{c.InputResend} extra copies");
+            highPrioritySwitch.Checked = c.HighPriority;
+            noThrottlingSwitch.Checked = c.NoThrottling;
+            keepAwakeSwitch.Checked = c.KeepAwake;
+            autoPadSwitch.Checked = c.AutoPadMode;
+            fullscreenSwitch.Checked = c.Fullscreen;
+            swallowMouseSwitch.Checked = c.SwallowMouse;
+            overlaySwitch.Checked = c.Overlay;
+            SelectChoice(cornerBox, c.OverlayCorner, c.OverlayCorner);
+            SelectChoice(opacityBox, c.OverlayOpacity, $"{c.OverlayOpacity} %");
+        }
+
+        /// <summary>Shows the cheat sheet for a few seconds with the choices on the Settings page (not saved yet).</summary>
+        void PreviewOverlay()
+        {
+            if (client != null) return; // joined: the real one is on screen
+            overlay.ShowSheet("Preview  ·  NBA 2K14", "Controller 2", cfg.KeyMap, true, cfg.ToggleKey,
+                Value(cornerBox, cfg.OverlayCorner), Value(opacityBox, cfg.OverlayOpacity));
+            previewTimer.Stop();
+            previewTimer.Start();
+        }
+
+        void EndPreview(object sender, EventArgs e)
+        {
+            previewTimer.Stop();
+            if (client == null) overlay.HideSheet();
+        }
+
+        void SaveSettings()
+        {
+            cfg.Fps = Value(fpsBox, cfg.Fps);
+            cfg.BitrateKbps = Value(bitrateBox, cfg.BitrateKbps);
+            cfg.Encoder = Value(encoderBox, cfg.Encoder);
+            cfg.Viewer = Value(viewerBox, cfg.Viewer);
+            cfg.InputResend = Value(resendBox, cfg.InputResend);
+            cfg.HighPriority = highPrioritySwitch.Checked;
+            cfg.NoThrottling = noThrottlingSwitch.Checked;
+            cfg.KeepAwake = keepAwakeSwitch.Checked;
+            cfg.AutoPadMode = autoPadSwitch.Checked;
+            cfg.Fullscreen = fullscreenSwitch.Checked;
+            cfg.SwallowMouse = swallowMouseSwitch.Checked;
+            cfg.Overlay = overlaySwitch.Checked;
+            cfg.OverlayCorner = Value(cornerBox, cfg.OverlayCorner);
+            cfg.OverlayOpacity = Value(opacityBox, cfg.OverlayOpacity);
+            if (client != null) UpdateOverlay();
+            Tweaks.Configure(cfg); // used from the next host / join session on
+            if (client != null) client.ExtraSends = cfg.InputResend;
+            if (hook != null) hook.SwallowMouse = cfg.SwallowMouse;
+            try
+            {
+                cfg.SaveSettings(AppPaths.ConfigFile);
+                Log.Info($"Settings saved: {cfg.Fps} fps, {cfg.BitrateKbps} kbps, encoder {cfg.Encoder}, viewer {cfg.Viewer}, " +
+                         $"high priority {cfg.HighPriority}, no throttling {cfg.NoThrottling}, keep awake {cfg.KeepAwake}, resend {cfg.InputResend}");
+                ShowSettingsStatus("✔ Saved", Theme.Good);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Could not save settings: " + ex.Message);
+                ShowSettingsStatus("Could not save lanpad.ini: " + ex.Message, Theme.Bad);
+            }
+        }
+
+        void ShowSettingsStatus(string text, Color color)
+        {
+            settingsStatus.Text = text;
+            settingsStatus.ForeColor = color;
+        }
+
+        // ---------------------------------------------------------------- controls (key editor)
+
+        static readonly (PadAction Action, string Name)[] KeyRows =
+        {
+            (PadAction.LeftUp, "Move up"), (PadAction.LeftDown, "Move down"),
+            (PadAction.LeftLeft, "Move left"), (PadAction.LeftRight, "Move right"),
+            (PadAction.Walk, "Walk (half speed)"),
+            (PadAction.RightUp, "Right stick up"), (PadAction.RightDown, "Right stick down"),
+            (PadAction.RightLeft, "Right stick left"), (PadAction.RightRight, "Right stick right"),
+            (PadAction.L3, "L3 (left stick click)"), (PadAction.R3, "R3 (right stick click)"),
+            (PadAction.Start, "Start"), (PadAction.Back, "Back / Select"),
+            (PadAction.A, "A"), (PadAction.B, "B"), (PadAction.X, "X"), (PadAction.Y, "Y"),
+            (PadAction.LB, "LB"), (PadAction.RB, "RB"), (PadAction.LT, "LT (left trigger)"), (PadAction.RT, "RT (right trigger)"),
+            (PadAction.DUp, "D-pad up"), (PadAction.DDown, "D-pad down"), (PadAction.DLeft, "D-pad left"), (PadAction.DRight, "D-pad right"),
+        };
+
+        static string ActionName(PadAction a) => KeyRows.FirstOrDefault(r => r.Action == a).Name ?? a.ToString();
+
+        void BuildControlsPage()
+        {
+            controlsPage = NewPage();
+            var col = Column(controlsPage);
+            col.Controls.Add(PageHeader(NewLabel("Controls", 18f, FontStyle.Bold),
+                NewLabel("Click a button, then press the key you want. Esc = cancel, right-click = no key.", 10.5f, FontStyle.Regular, Theme.Muted)));
+
+            layoutBox = ChoiceBox(330,
+                new Choice(ControlLayout.Sports, "Sports  -  NBA 2K, FIFA / FC, PES, WWE"),
+                new Choice(ControlLayout.Fighting, "Fighting  -  Tekken, MK, Street Fighter"),
+                new Choice(ControlLayout.Action, "Action  -  co-op, platformers, party"),
+                new Choice(ControlLayout.Racing, "Racing  -  Rocket League, F1, DiRT"));
+            layoutBox.SelectedIndexChanged += (s, e) => ShowLayoutKeys();
+            toggleKeyButton = new KeyButton { Margin = new Padding(0, 2, 0, 4) };
+            toggleKeyButton.KeyChosen += (b, k) => SetToggleKey(k);
+            toggleKeyButton.Cleared += b => ShowControlsStatus("The Pad mode key cannot be empty.", Theme.Warn);
+            layoutInfo = Hint("");
+            col.Controls.Add(AutoCard(
+                Row(Field("Layout", layoutBox), Field("Pad mode key (Ctrl + it = leave)", toggleKeyButton)),
+                layoutInfo));
+
+            // two columns of "name  [key]"
+            var grid = new TableLayoutPanel { AutoSize = true, ColumnCount = 5, Margin = new Padding(0, 4, 0, 4) };
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 146));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 146));
+            int half = (KeyRows.Length + 1) / 2;
+            for (int i = 0; i < KeyRows.Length; i++)
+            {
+                var (action, name) = KeyRows[i];
+                var label = NewLabel(name, 10f);
+                label.Anchor = AnchorStyles.Left;
+                var button = new KeyButton { Margin = new Padding(0, 3, 0, 3) };
+                button.KeyChosen += (b, k) => SetKey(action, k);
+                button.Cleared += b => SetKey(action, Keys.None);
+                keyButtons[action] = button;
+                int column = i < half ? 0 : 3, row = i < half ? i : i - half;
+                grid.Controls.Add(label, column, row);
+                grid.Controls.Add(button, column + 1, row);
+            }
+            col.Controls.Add(Section("Keys for this layout"));
+            col.Controls.Add(AutoCard(grid));
+
+            col.Controls.Add(Section("Joined PC", 14));
+            col.Controls.Add(AutoCard(ToggleRow("Use my own keys when I join",
+                "Normally the host's game picks the controls for everyone. On: this PC always uses the keys set here.",
+                out ownKeysSwitch)));
+
+            controlsStatus = NewLabel("", 9.5f, FontStyle.Regular, Theme.Good);
+            controlsStatus.Margin = new Padding(0, 13, 0, 0);
+            col.Controls.Add(Row(
+                NewButton("Save", (s, e) => SaveControls(), ButtonKind.Primary, 130),
+                NewButton("Reset this layout", (s, e) => ResetLayoutKeys(), ButtonKind.Secondary, 170),
+                NewButton("Back", (s, e) => ShowPage(controlsReturn ?? menuPage), ButtonKind.Ghost, 110),
+                controlsStatus));
+        }
+
+        ControlLayout EditLayout => Value(layoutBox, ControlLayout.Sports);
+
+        void OpenControls(Panel returnTo, ControlLayout? layout = null)
+        {
+            controlsReturn = returnTo;
+            editKeys.Clear();
+            foreach (ControlLayout l in Enum.GetValues(typeof(ControlLayout))) editKeys[l] = cfg.KeysFor(l).Clone();
+            editToggleKey = cfg.ToggleKey;
+            toggleKeyButton.Value = new[] { editToggleKey };
+            ownKeysSwitch.Checked = cfg.OwnKeys;
+            SelectChoice(layoutBox, layout ?? EditLayout, "");
+            ShowLayoutKeys();
+            controlsStatus.Text = "";
+            ShowPage(controlsPage);
+        }
+
+        void ShowLayoutKeys()
+        {
+            if (!editKeys.TryGetValue(EditLayout, out var map)) return;
+            foreach (var kv in keyButtons)
+            {
+                kv.Value.Cancel();
+                kv.Value.Value = map.Get(kv.Key);
+            }
+            if (games.Count == 0 && joinGames == null) joinGames = GameCatalog.Load(null);
+            var all = (games.Count > 0 ? games : joinGames)
+                .Where(g => g.Layout == EditLayout && g.Name != GameCatalog.GenericName).Select(g => g.Name).ToList();
+            string usedBy = all.Count == 0 ? ""
+                : "Used by " + string.Join(", ", all.Take(5)) + (all.Count > 5 ? $" and {all.Count - 5} more" : "") + ". ";
+            layoutInfo.Text = usedBy + (EditLayout == ControlLayout.Sports ? "Also used for \"Any other game\". " : "") +
+                              "A game in games.ini can still change single keys.";
+        }
+
+        void SetKey(PadAction action, Keys key)
+        {
+            var map = editKeys[EditLayout];
+            if (key == editToggleKey)
+            {
+                ShowControlsStatus($"{KeyMap.KeyName(key)} is the Pad mode key - pick another key.", Theme.Bad);
+                return;
+            }
+            map.Set(action, key == Keys.None ? new Keys[0] : new[] { key });
+            keyButtons[action].Value = map.Get(action);
+
+            var also = key == Keys.None ? null
+                : KeyRows.Where(r => r.Action != action && map.Get(r.Action).Contains(key)).Select(r => r.Name).ToList();
+            if (also != null && also.Count > 0)
+                ShowControlsStatus($"{KeyMap.KeyName(key)} also does: {string.Join(", ", also)}", Theme.Warn);
+            else
+                ShowControlsStatus("Not saved yet", Theme.Muted);
+        }
+
+        void SetToggleKey(Keys key)
+        {
+            var used = editKeys.Where(kv => KeyRows.Any(r => kv.Value.Get(r.Action).Contains(key)))
+                               .Select(kv => kv.Key.ToString()).ToList();
+            if (used.Count > 0)
+            {
+                ShowControlsStatus($"{KeyMap.KeyName(key)} is a controller key in {string.Join(", ", used)} - pick another key.", Theme.Bad);
+                return;
+            }
+            editToggleKey = key;
+            toggleKeyButton.Value = new[] { key };
+            ShowControlsStatus("Not saved yet", Theme.Muted);
+        }
+
+        void ResetLayoutKeys()
+        {
+            var defaults = LanPadConfig.DefaultKeys(EditLayout);
+            if (KeyRows.Any(r => defaults.Get(r.Action).Contains(editToggleKey)))
+            {
+                editToggleKey = Keys.F12;
+                toggleKeyButton.Value = new[] { editToggleKey };
+            }
+            editKeys[EditLayout] = defaults;
+            ShowLayoutKeys();
+            ShowControlsStatus($"{EditLayout} keys reset - click Save to keep them.", Theme.Warn);
+        }
+
+        void SaveControls()
+        {
+            foreach (var kv in editKeys) cfg.SetKeys(kv.Key, kv.Value.Clone());
+            cfg.ToggleKey = editToggleKey;
+            cfg.OwnKeys = ownKeysSwitch.Checked;
+            try
+            {
+                foreach (ControlLayout l in Enum.GetValues(typeof(ControlLayout))) cfg.SaveKeys(AppPaths.ConfigFile, l);
+                Log.Info($"Controls saved (Pad mode key {KeyMap.KeyName(cfg.ToggleKey)}, own keys {cfg.OwnKeys})");
+                ShowControlsStatus("✔ Saved" + (server != null ? " - joined players got the new keys" : ""), Theme.Good);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Could not save controls: " + ex.Message);
+                ShowControlsStatus("Could not save lanpad.ini: " + ex.Message, Theme.Bad);
+            }
+            // hosting: send the new keys to every joined PC right away
+            if (server != null && currentGame != null) ApplyGame(currentGame, false);
+        }
+
+        void ShowControlsStatus(string text, Color color)
+        {
+            controlsStatus.Text = text;
+            controlsStatus.ForeColor = color;
         }
 
         // ---------------------------------------------------------------- host
@@ -376,6 +816,7 @@ namespace LanPad.UI
             col.Controls.Add(playerList);
             col.Controls.Add(Row(
                 NewButton("Kick selected", (s, e) => KickSelected()),
+                NewButton("⌨  Edit keys", (s, e) => OpenControls(hostPage, currentGame?.Layout)),
                 NewButton("Stop hosting", (s, e) => StopHost(true), ButtonKind.Danger)));
             col.Controls.Add(Para(
                 "Tip: set the game to windowed / borderless 1920x1080 so the stream works. Each joined player is one Xbox " +
@@ -418,7 +859,7 @@ namespace LanPad.UI
         void ApplyGame(GameProfile g, bool remember)
         {
             currentGame = g;
-            var keys = g.BuildKeyMap(cfg.KeyMap);
+            var keys = g.BuildKeyMap(cfg);
             int maxRemote = Math.Max(1, Math.Min(cfg.MaxPlayers, g.Players - (cfg.HostPlays ? 1 : 0)));
             server?.SetGame(g.Name, keys.ToBytes(), maxRemote);
 
@@ -513,6 +954,7 @@ namespace LanPad.UI
             pinLabel.Text = pin.Length > 0 ? pin : "off";
             padsLabel.Text = $"{pads.Capacity} virtual Xbox 360 controllers ready  ·  up to {server.MaxPlayers} players can join";
             padsLabel.DotColor = Theme.Good;
+            hostTweaks = Tweaks.BeginSession();
             LoadGames();
             streamStatus = StreamBroadcaster.FindFfmpeg() == null
                 ? "Stream: ffmpeg.exe missing in tools folder - players will not see the screen"
@@ -538,6 +980,8 @@ namespace LanPad.UI
             pads?.Dispose();
             pads = null;
             streamBusy = false;
+            hostTweaks?.Dispose();
+            hostTweaks = null;
             if (showMenu) ShowPage(menuPage);
         }
 
@@ -692,11 +1136,14 @@ namespace LanPad.UI
             col.Controls.Add(padModeLabel);
             col.Controls.Add(Section("Your controls  ·  set by the host's game", 18));
             col.Controls.Add(keysCard);
-            col.Controls.Add(Para(
-                $"{KeyMap.KeyName(cfg.ToggleKey)} = Pad mode on/off (off = keyboard works normally again).   " +
-                $"Ctrl+{KeyMap.KeyName(cfg.ToggleKey)} = leave the game.", 10f, Theme.Text));
+            joinedHotkeys = Para(HotkeysText(), 10f, Theme.Text);
+            col.Controls.Add(joinedHotkeys);
             col.Controls.Add(NewButton("Leave game", (s, e) => LeaveGame(null), ButtonKind.Danger));
         }
+
+        string HotkeysText() =>
+            $"{KeyMap.KeyName(cfg.ToggleKey)} = Pad mode on/off (off = keyboard works normally again).   " +
+            $"Ctrl+{KeyMap.KeyName(cfg.ToggleKey)} = leave the game.";
 
         void OpenJoin(string address)
         {
@@ -798,18 +1245,51 @@ namespace LanPad.UI
             // Until the host sends its game's controls, use this PC's own [Keys] (Sports layout).
             activeKeyMap = cfg.KeyMap;
             keysText.Text = activeKeyMap.Describe().Replace("\n", Environment.NewLine);
-            client = new JoinClient(host, name, pinBox.Text.Trim(), () => KeyMapper.Map(h.IsDown, activeKeyMap));
+            joinedHotkeys.Text = HotkeysText(); // the Pad mode key may have changed on the Controls page
+            // LanPad runs the keyboard hook: high priority keeps key presses on time while mpv decodes
+            joinTweaks = Tweaks.BeginSession();
+            client = new JoinClient(host, name, pinBox.Text.Trim(), () => KeyMapper.Map(h.IsDown, activeKeyMap))
+            {
+                ExtraSends = cfg.InputResend,
+            };
             var c = client;
             hook.KeysChanged += c.Signal;
             hook.PadModeChanged += on => UpdatePadModeLabel(true);
             hook.LeaveRequested += () => BeginInvoke((Action)(() => LeaveGame(null)));
+            hook.OverlayToggleRequested += () => BeginInvoke((Action)ToggleOverlay);
             client.StatusChanged += s => BeginInvoke((Action)(() => OnJoinStatus(c, s)));
             client.GameChanged += () => BeginInvoke((Action)(() => OnHostGameChanged(c)));
 
             StopDiscovery();
             joinedTitle.Text = $"Joining {host.Address} ...";
-            UpdatePadModeLabel(false);
+            overlayShown = cfg.Overlay;
+            UpdatePadModeLabel(false); // also shows the cheat sheet
             ShowPage(joinedPage);
+        }
+
+        /// <summary>Key cheat sheet on top of the game: game, controller number, Pad mode, keys of the current controls.</summary>
+        void UpdateOverlay()
+        {
+            var c = client;
+            if (c == null || !overlayShown)
+            {
+                overlay.HideSheet();
+                return;
+            }
+            string title = c.HostGameName.Length > 0 ? c.HostGameName : $"Joining {c.Host.Address}";
+            string sub = c.Status == JoinStatus.Joined ? $"Controller {c.Slot}" + (cfg.OwnKeys ? "  ·  your own keys" : "")
+                       : c.Status == JoinStatus.LostHost ? "Connection lost - retrying..." : "Connecting...";
+            overlay.ShowSheet(title, sub, activeKeyMap, hook != null && hook.PadMode, cfg.ToggleKey, cfg.OverlayCorner, cfg.OverlayOpacity);
+        }
+
+        /// <summary>Shift + toggle key while joined.</summary>
+        void ToggleOverlay()
+        {
+            if (client == null) return;
+            overlayShown = !overlayShown;
+            UpdateOverlay();
+            string t = KeyMap.KeyName(cfg.ToggleKey);
+            toast.ShowMessage(overlayShown ? "Keys shown" : $"Keys hidden  -  Shift+{t} shows them", Color.LightSkyBlue, 2000);
         }
 
         static string JoinedTitle(JoinClient c) =>
@@ -819,15 +1299,29 @@ namespace LanPad.UI
         void OnHostGameChanged(JoinClient c)
         {
             if (c != client) return;
-            if (c.HostKeyMap != null)
+            var keys = ControlsFor(c);
+            if (keys != null)
             {
-                activeKeyMap = c.HostKeyMap;
+                activeKeyMap = keys;
                 keysText.Text = activeKeyMap.Describe().Replace("\n", Environment.NewLine);
                 c.Signal(); // send the state again with the new controls
             }
             if (c.Status == JoinStatus.Joined) joinedTitle.Text = JoinedTitle(c);
             if (c.HostGameName.Length > 0)
-                toast.ShowMessage($"Game: {c.HostGameName}  -  controls updated", Color.LightSkyBlue, 3000);
+                toast.ShowMessage($"Game: {c.HostGameName}  -  " + (cfg.OwnKeys ? "your own keys" : "controls updated"), Color.LightSkyBlue, 3000);
+            UpdateOverlay();
+        }
+
+        /// <summary>
+        /// Controls for the host's game: the ones the host sent, or with "Use my own keys" this PC's keys for
+        /// that game's layout (looked up in this PC's game list; unknown game = Sports keys).
+        /// </summary>
+        KeyMap ControlsFor(JoinClient c)
+        {
+            if (!cfg.OwnKeys) return c.HostKeyMap;
+            if (joinGames == null) joinGames = GameCatalog.Load(null);
+            var game = joinGames.FirstOrDefault(g => string.Equals(g.Name, c.HostGameName, StringComparison.OrdinalIgnoreCase));
+            return game != null ? game.BuildKeyMap(cfg) : cfg.KeyMap;
         }
 
         void OnJoinStatus(JoinClient c, JoinStatus s)
@@ -878,6 +1372,7 @@ namespace LanPad.UI
                     LeaveGame("The host closed the room or removed you from the game.");
                     break;
             }
+            UpdateOverlay();
         }
 
         void UpdatePadModeLabel(bool withToast)
@@ -889,6 +1384,7 @@ namespace LanPad.UI
             padModeLabel.Fill = on ? Theme.Blend(Theme.Good, Theme.Back, 0.25f) : Theme.Blend(Theme.Bad, Theme.Back, 0.2f);
             if (withToast)
                 toast.ShowMessage(on ? "PAD MODE ON" : "PAD MODE OFF - keyboard is normal", on ? Color.LightGreen : Color.Orange);
+            UpdateOverlay();
         }
 
         void LeaveGame(string message)
@@ -904,6 +1400,9 @@ namespace LanPad.UI
             }
             client?.Dispose();
             client = null;
+            overlay.HideSheet();
+            joinTweaks?.Dispose();
+            joinTweaks = null;
             if (!wasJoined) return;
             if (!IsDisposed && !Disposing)
             {

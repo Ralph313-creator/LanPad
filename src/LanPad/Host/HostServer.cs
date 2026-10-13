@@ -106,6 +106,13 @@ namespace LanPad.Host
 
         void RecvLoop()
         {
+            // received controller states go straight into the virtual pads: keep this thread on time
+            using (Tweaks.GameThread())
+                RecvLoopBody();
+        }
+
+        void RecvLoopBody()
+        {
             while (running)
             {
                 IPEndPoint ep = null;

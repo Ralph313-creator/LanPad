@@ -10,7 +10,8 @@ namespace LanPad.Join
     /// Global low-level keyboard (and mouse) hook. Works while the stream viewer has focus.
     /// In Pad mode every key is captured for the controller and blocked from other programs,
     /// so typing W/A/S/D never reaches the viewer or Windows. The toggle key (default F12)
-    /// switches Pad mode; Ctrl + toggle key asks to leave the game.
+    /// switches Pad mode; Ctrl + toggle key asks to leave the game; Shift + toggle key shows / hides
+    /// the key cheat sheet.
     /// Must be installed on a thread with a message loop (the WinForms UI thread).
     /// </summary>
     public sealed class KeyboardHook : IDisposable
@@ -62,6 +63,7 @@ namespace LanPad.Join
         public event Action KeysChanged;
         public event Action<bool> PadModeChanged;
         public event Action LeaveRequested;
+        public event Action OverlayToggleRequested;
 
         public KeyboardHook()
         {
@@ -122,8 +124,8 @@ namespace LanPad.Join
                         if (isDown && !toggleHeld)
                         {
                             toggleHeld = true;
-                            bool ctrl = IsPhysicallyDown(Keys.LControlKey) || IsPhysicallyDown(Keys.RControlKey);
-                            if (ctrl) LeaveRequested?.Invoke();
+                            if (Held(Keys.LControlKey) || Held(Keys.RControlKey)) LeaveRequested?.Invoke();
+                            else if (Held(Keys.LShiftKey) || Held(Keys.RShiftKey)) OverlayToggleRequested?.Invoke();
                             else PadMode = !PadMode;
                         }
                         else if (isUp)
@@ -159,6 +161,10 @@ namespace LanPad.Join
         static extern short GetAsyncKeyState(int vKey);
 
         static bool IsPhysicallyDown(Keys k) => (GetAsyncKeyState((int)k) & 0x8000) != 0;
+
+        // In Pad mode this hook blocks every key, so Windows' own key state may not see a held Ctrl / Shift:
+        // check what the hook recorded too.
+        bool Held(Keys k) => IsDown(k) || IsPhysicallyDown(k);
 
         public void Dispose()
         {

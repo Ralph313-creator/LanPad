@@ -92,6 +92,11 @@ namespace LanPad.Join
         /// <summary>Call when keys changed, so the new state is sent right away.</summary>
         public void Signal() => wake.Set();
 
+        /// <summary>Extra copies of each change, <see cref="ResendMs"/> apart, so one lost UDP packet costs 10 ms, not a 50 ms heartbeat.</summary>
+        public int ExtraSends { get; set; }
+
+        const int HeartbeatMs = 50, ResendMs = 10;
+
         void SetStatus(JoinStatus s)
         {
             if (status == s) return;
@@ -102,6 +107,13 @@ namespace LanPad.Join
 
         void SendLoop()
         {
+            using (Tweaks.GameThread())
+                SendLoopBody();
+        }
+
+        void SendLoopBody()
+        {
+            int resendLeft = 0;
             while (running)
             {
                 var st = status;
@@ -124,9 +136,12 @@ namespace LanPad.Join
                     continue;
                 }
 
-                // Joined: wait for a key change or 50 ms (heartbeat), then send the current state.
-                wake.WaitOne(50);
+                // Joined: wait for a key change, the next extra copy (10 ms) or the heartbeat (50 ms),
+                // then send the current state. Every send has a new Seq; the host just applies the latest.
+                bool changed = wake.WaitOne(resendLeft > 0 ? ResendMs : HeartbeatMs);
                 if (!running) break;
+                if (changed) resendLeft = ExtraSends;
+                else if (resendLeft > 0) resendLeft--;
                 var state = readState();
                 Send(new Packet(PacketType.State, ClientId) { Seq = ++seq, Pad = state });
             }

@@ -37,7 +37,10 @@ LanPad lets players sit at **different PCs**:
 1. Open LanPad → **JOIN GAME**, type the **room PIN**, double-click the host in the list
    (or type the host's IP).
 2. The host's screen opens full screen and your keyboard is now a controller (**Pad mode ON**).
+   A **key cheat sheet** sits in a corner on top of the game: which key is which Xbox button, and Pad mode on/off
+   (clicks go through it; turn it off or move it in Settings).
    - **F12** = Pad mode on/off (off = keyboard works normally)
+   - **Shift + F12** = hide / show the key cheat sheet
    - **Ctrl + F12** = leave the game
 
 **Controls — the host's game picks the layout (all: WASD = move, arrows = right stick, Enter/Backspace = Start/Back, 1-4 = D-pad)**
@@ -63,12 +66,33 @@ Exe=D:\Games\My Game\game.exe
 
 ## Settings (`C:\LanPad\lanpad.ini`)
 
+Most players only need the **⚙ Settings** button on the LanPad start screen: stream quality
+(frame rate, bitrate, encoder), the smooth-gameplay tweaks and the join options. **Save** writes them to `lanpad.ini`.
+
+**⌨ Controls** (start screen, or **Edit keys** while hosting) sets the keys: pick a layout (Sports, Fighting, Action,
+Racing), click a button, press the key. Esc = cancel, right-click = no key. The Pad mode key (F12) can be changed there too.
+- On the **host**, Save sends the new keys to every joined player right away.
+- On a **joined PC**, turn on **Use my own keys when I join** to always play with this PC's keys instead of the host's.
+
+**Smooth gameplay tweaks** (`[Performance]`, all on by default, all undone when you stop hosting / leave):
+
+| Setting | What it does |
+|---|---|
+| `HighPriority=true` | LanPad runs at High priority (keyboard hook, input), ffmpeg and mpv above normal, input threads in the Windows "Games" class. |
+| `NoThrottling=true` | Windows 11 slows down hidden / background programs; ffmpeg, the sound player and LanPad behind the game opt out. Also a 1 ms Windows timer. |
+| `KeepAwake=true` | No sleep, screen saver or screen off during a game. |
+| `InputResend=2` | Each controller change is sent 2 more times, 10 ms apart, so a lost packet costs 10 ms instead of a dropped press (0-4; raise it on Wi-Fi). |
+
+Other settings:
+
 - `RoomPin=random` (new PIN each time), `off`, or a fixed number like `1234`
 - `Game=NBA 2K14` (last picked game), `GameFolders=G:\Offline Games;D:\Games;...` (where games are searched)
 - `HostPlays=true` (the host keyboard is a player; `false` = all players join from other PCs), `MaxPlayers=4`
 - `BitrateKbps=15000`, `Fps=60`, `Encoder=auto|amf|x264`
 - `[Keys]` — the Sports layout, any key per button, several keys with commas: `A=K,NumPad2`
-- `ToggleKey=F12`, `AutoPadMode=true`, `Fullscreen=true`, `Viewer=mpv|ffplay`
+- `[Keys.Fighting]`, `[Keys.Action]`, `[Keys.Racing]` — your changes to the built-in layouts (written by the Controls page)
+- `ToggleKey=F12`, `AutoPadMode=true`, `Fullscreen=true`, `Viewer=mpv|ffplay`, `OwnKeys=false`
+- `Overlay=true` (key cheat sheet on top of the game), `OverlayCorner=TopRight|TopLeft|BottomRight|BottomLeft`, `OverlayOpacity=85`
 
 ## How it works
 
@@ -88,7 +112,8 @@ HOST:    screen (ddagrab) + sound (WASAPI loopback) -> ffmpeg (AMD AMF H.264) ->
 |---|---|
 | "ViGEmBus driver is not installed" | Run `install-image.ps1` as admin (in super-client mode). |
 | Join PC shows no picture | Firewall rules missing (run the installer) or the switch blocks multicast. Try `Viewer=ffplay`. |
-| Picture is laggy / blocky | Lower `BitrateKbps` (e.g. 8000) or set the game to 1280x720. |
+| Picture is laggy / blocky | Settings → lower the bitrate (e.g. 8 Mbps), then the frame rate, or set the game to 1280x720. |
+| Buttons sometimes missed (Wi-Fi) | Settings → Controller packet repeat → 3 or 4 extra copies. |
 | Game doesn't see the controllers | Start hosting **before** starting the game, then check the game's controller screen. |
 | Keys stuck / typing doesn't work | Press **F12** to turn Pad mode off. |
 | Host list is empty | Type the host IP instead; check both PCs are on the same LAN. |

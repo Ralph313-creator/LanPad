@@ -41,6 +41,7 @@ namespace LanPad
                 GameTests();
                 NetworkTests();
                 GameSwitchTests();
+                InputResendTests();
                 DriverTests();
             }
             catch (Exception ex)
@@ -195,6 +196,59 @@ namespace LanPad
             Check(warnings.Count == 1 && warnings[0].Contains("Banana"), "config: warning for bad key");
             File.Delete(tmp);
 
+            File.WriteAllText(tmp, "; keep me\n[Performance]\nHighPriority=false\nInputResend=9\n");
+            var perf = LanPadConfig.Load(tmp, null);
+            Check(!perf.HighPriority && perf.NoThrottling && perf.KeepAwake && perf.InputResend == 4,
+                "config: [Performance] tweaks loaded (InputResend clamped to 4)");
+            perf.Fps = 30;
+            perf.KeepAwake = false;
+            perf.Viewer = "ffplay";
+            perf.Overlay = false;
+            perf.OverlayCorner = "BottomLeft";
+            perf.OverlayOpacity = 50;
+            perf.SaveSettings(tmp);
+            var saved = LanPadConfig.Load(tmp, null);
+            Check(saved.Fps == 30 && !saved.KeepAwake && !saved.HighPriority && saved.InputResend == 4 && saved.Viewer == "ffplay",
+                "config: Settings page values are saved and read back");
+            Check(!saved.Overlay && saved.OverlayCorner == "BottomLeft" && saved.OverlayOpacity == 50,
+                "config: key cheat sheet off / corner / opacity saved and read back");
+            Check(File.ReadAllText(tmp).Contains("; keep me"), "config: saving settings keeps comments");
+            File.WriteAllText(tmp, "[Join]\nOverlayCorner=middle\nOverlayOpacity=5\n");
+            var badOverlay = new List<string>();
+            var ov = LanPadConfig.Load(tmp, badOverlay);
+            Check(ov.Overlay && ov.OverlayCorner == "TopRight" && ov.OverlayOpacity == 30 && badOverlay.Count == 1,
+                "config: bad cheat sheet corner -> TopRight with a warning, opacity at least 30 %");
+            File.Delete(tmp);
+
+            // Controls page: key text round trip, per-layout keys, saving
+            var special = new[] { Keys.LShiftKey, Keys.RControlKey, Keys.Return, Keys.Back, Keys.OemSemicolon, Keys.D7,
+                                  Keys.Oemcomma, Keys.NumPad2, Keys.Space, Keys.RMenu, Keys.Up, Keys.F5 };
+            bool roundTrip = special.All(k => KeyMap.TryParseKeyList(KeyMap.IniText(new[] { k }), out var back, out _) &&
+                                              back.Length == 1 && back[0] == k);
+            Check(roundTrip, "keys: every key the Controls page can pick is saved as text that reads back the same");
+
+            File.WriteAllText(tmp, "[Join]\nOwnKeys=true\n[Keys.Fighting]\nA=Space\n");
+            var keyCfg = LanPadConfig.Load(tmp, null);
+            Check(keyCfg.OwnKeys && MapKeys(keyCfg.KeysFor(ControlLayout.Fighting), Keys.Space).Buttons == PadButtons.A &&
+                  MapKeys(keyCfg.KeysFor(ControlLayout.Fighting), Keys.U).Buttons == PadButtons.X,
+                "config: [Keys.Fighting] changes one key, the rest stays the built-in fighting layout");
+            var tekkenLike = new GameProfile { Name = "T", Layout = ControlLayout.Fighting };
+            tekkenLike.KeyChanges[PadAction.Y] = new[] { Keys.Z };
+            var built = tekkenLike.BuildKeyMap(keyCfg);
+            Check(MapKeys(built, Keys.Space).Buttons == PadButtons.A && MapKeys(built, Keys.Z).Buttons == PadButtons.Y,
+                "keys: a game uses this PC's layout keys plus its own games.ini changes");
+
+            var racing = keyCfg.KeysFor(ControlLayout.Racing).Clone();
+            racing.Set(PadAction.A, Keys.RShiftKey);
+            keyCfg.SetKeys(ControlLayout.Racing, racing);
+            keyCfg.ToggleKey = Keys.F11;
+            keyCfg.SaveKeys(tmp, ControlLayout.Racing);
+            var keysBack = LanPadConfig.Load(tmp, null);
+            Check(MapKeys(keysBack.KeysFor(ControlLayout.Racing), Keys.RShiftKey).Buttons == PadButtons.A &&
+                  keysBack.ToggleKey == Keys.F11 && MapKeys(keysBack.KeysFor(ControlLayout.Fighting), Keys.Space).Buttons == PadButtons.A,
+                "config: saved keys read back (Racing A = R-Shift, Pad mode key F11, Fighting unchanged)");
+            File.Delete(tmp);
+
             string real = Path.Combine(AppPaths.AppDir, "lanpad.ini");
             if (File.Exists(real))
             {
@@ -327,6 +381,53 @@ namespace LanPad
                 c1?.Dispose();
                 c2?.Dispose();
                 server?.Dispose();
+            }
+        }
+
+        /// <summary>A key change goes out once right away plus ExtraSends copies 10 ms apart (before the 50 ms heartbeat).</summary>
+        static void InputResendTests()
+        {
+            var loop = IPAddress.Loopback;
+            using (var fakeHost = new UdpClient(new IPEndPoint(loop, 0)))
+            using (Tweaks.BeginSession()) // 1 ms timer, as in a real game
+            {
+                fakeHost.Client.ReceiveTimeout = 2000;
+                var hostEp = (IPEndPoint)fakeHost.Client.LocalEndPoint;
+                var want = new PadState { Buttons = PadButtons.A, LeftY = 32767 };
+                PadState current = PadState.Neutral;
+                var c = new JoinClient(hostEp, "Resend", "", () => current, loop) { ExtraSends = 2 };
+                try
+                {
+                    IPEndPoint from = null;
+                    Packet join = null;
+                    var until = DateTime.UtcNow.AddSeconds(2);
+                    while (join == null && DateTime.UtcNow < until)
+                    {
+                        byte[] d = fakeHost.Receive(ref from);
+                        if (Packet.TryParse(d, d.Length, out var p) && p.Type == PacketType.Join) join = p;
+                    }
+                    Check(join != null, "input: join request reaches the host");
+                    if (join == null) return;
+                    byte[] welcome = new Packet(PacketType.Welcome, join.ClientId) { Slot = 1 }.ToBytes();
+                    fakeHost.Send(welcome, welcome.Length, from);
+                    Check(WaitFor(() => c.Status == JoinStatus.Joined, 2000), "input: joined the fake host");
+
+                    current = want;
+                    var sw = Stopwatch.StartNew();
+                    c.Signal();
+                    int copies = 0;
+                    while (sw.ElapsedMilliseconds < 45)
+                    {
+                        if (fakeHost.Available == 0) { Thread.Sleep(1); continue; }
+                        byte[] d = fakeHost.Receive(ref from);
+                        if (Packet.TryParse(d, d.Length, out var p) && p.Type == PacketType.State && p.Pad == want) copies++;
+                    }
+                    Check(copies >= 3, $"input: a key change is sent 1 + 2 extra times within 45 ms ({copies} copies)");
+                }
+                finally
+                {
+                    c.Dispose();
+                }
             }
         }
 

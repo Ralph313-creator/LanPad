@@ -35,6 +35,7 @@ namespace LanPad
             var cfg = LanPadConfig.Load(AppPaths.ConfigFile, warnings);
             Log.Info($"LanPad {Application.ProductVersion} started on {Environment.MachineName}");
             foreach (string w in warnings) Log.Warn(w);
+            Tweaks.Configure(cfg);
 
             if (args.Any(a => a.Equals("--streamtest", StringComparison.OrdinalIgnoreCase)))
                 return StreamTest.Run(cfg, args);

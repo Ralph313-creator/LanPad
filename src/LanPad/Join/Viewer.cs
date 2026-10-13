@@ -156,6 +156,7 @@ namespace LanPad.Join
                         WorkingDirectory = Path.GetDirectoryName(p.Exe),
                     });
                     p.Started = DateTime.UtcNow;
+                    Tweaks.Boost(p.Proc, p.Name + " player");
                 }
                 catch (Exception ex)
                 {

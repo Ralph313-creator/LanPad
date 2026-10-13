@@ -182,6 +182,33 @@ namespace LanPad.Join
             return k.ToString();
         }
 
+        /// <summary>Key list as lanpad.ini text that <see cref="TryParseKeyList"/> reads back (e.g. "LShift", "K,NumPad2").</summary>
+        public static string IniText(Keys[] keys) => string.Join(",", (keys ?? None).Select(IniName));
+
+        static string IniName(Keys k)
+        {
+            switch (k)
+            {
+                case Keys.Return: return "Enter";
+                case Keys.Back: return "Backspace";
+                case Keys.Escape: return "Esc";
+                case Keys.LShiftKey: return "LShift";
+                case Keys.RShiftKey: return "RShift";
+                case Keys.LControlKey: return "LCtrl";
+                case Keys.RControlKey: return "RCtrl";
+                case Keys.LMenu: return "LAlt";
+                case Keys.RMenu: return "RAlt";
+                case Keys.OemSemicolon: return ";";
+                case Keys.OemPeriod: return ".";
+                case Keys.OemQuestion: return "/";
+            }
+            if (k >= Keys.D0 && k <= Keys.D9) return ((int)(k - Keys.D0)).ToString();
+            return k.ToString(); // enum name ("Oemcomma", "NumPad2"), parsed back by Enum.TryParse
+        }
+
+        /// <summary>Keys for one action as shown on screen: "K", "K / NumPad2", or "" for none.</summary>
+        public static string DisplayText(Keys[] keys) => string.Join(" / ", (keys ?? None).Select(KeyName));
+
         string Names(PadAction a)
         {
             var keys = Get(a);

@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using LanPad.Games;
+using LanPad.Join;
 
 namespace LanPad.UI
 {
@@ -267,6 +268,205 @@ namespace LanPad.UI
                 g.DrawLine(pen, ax, ay + 8 * s, ax + 12 * s, ay + 8 * s);
                 g.DrawLines(pen, new[] { new PointF(ax + 7 * s, ay + 3 * s), new PointF(ax + 12 * s, ay + 8 * s), new PointF(ax + 7 * s, ay + 13 * s) });
             }
+        }
+    }
+
+    /// <summary>
+    /// Shows the key(s) for one controller button like a keycap. Click, then press a key to choose it
+    /// (left / right Shift, Ctrl and Alt are told apart); Esc or a second click cancels; right-click clears.
+    /// </summary>
+    sealed class KeyButton : Button
+    {
+        const int WM_SYSKEYUP = 0x0105;
+        static readonly Font WaitFont = Theme.Font(9f, FontStyle.Italic);
+        bool capturing, hover;
+        Keys swallowUp = Keys.None;
+        Keys[] keys = new Keys[0];
+
+        public KeyButton()
+        {
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            Cursor = Cursors.Hand;
+            Font = Theme.Font(10f, FontStyle.Bold);
+            Size = new Size(132, 30);
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        }
+
+        public Keys[] Value
+        {
+            get => keys;
+            set { keys = value ?? new Keys[0]; Invalidate(); }
+        }
+
+        /// <summary>A key was pressed while waiting (left / right modifier already resolved).</summary>
+        public event Action<KeyButton, Keys> KeyChosen;
+        /// <summary>Right-click: no key for this button.</summary>
+        public event Action<KeyButton> Cleared;
+
+        public bool Capturing => capturing;
+
+        public void Cancel()
+        {
+            if (!capturing) return;
+            capturing = false;
+            Invalidate();
+        }
+
+        protected override void OnClick(EventArgs e)
+        {
+            base.OnClick(e);
+            capturing = !capturing;
+            Invalidate();
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (e.Button != MouseButtons.Right) return;
+            capturing = false;
+            Cleared?.Invoke(this);
+            Invalidate();
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hover = false; Invalidate(); base.OnMouseLeave(e); }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            base.OnLostFocus(e);
+            Cancel();
+        }
+
+        // while waiting, every key (Tab, arrows, Enter...) comes here instead of moving the focus
+        protected override bool IsInputKey(Keys keyData) => capturing || base.IsInputKey(keyData);
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData) =>
+            !capturing && base.ProcessCmdKey(ref msg, keyData);
+
+        protected override void OnPreviewKeyDown(PreviewKeyDownEventArgs e)
+        {
+            if (capturing) e.IsInputKey = true;
+            base.OnPreviewKeyDown(e);
+        }
+
+        protected override bool ProcessDialogKey(Keys keyData) => !capturing && base.ProcessDialogKey(keyData);
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (!capturing) { base.OnKeyDown(e); return; }
+            e.Handled = e.SuppressKeyPress = true;
+            capturing = false;
+            swallowUp = e.KeyCode; // so its key-up does not click the button (Space) or open the window menu (Alt, F10)
+            Invalidate();
+            if (e.KeyCode == Keys.Escape) return;
+            KeyChosen?.Invoke(this, Resolve(e.KeyCode));
+        }
+
+        protected override void OnKeyUp(KeyEventArgs e)
+        {
+            if (swallowUp != Keys.None && e.KeyCode == swallowUp)
+            {
+                swallowUp = Keys.None;
+                e.Handled = true;
+                return;
+            }
+            base.OnKeyUp(e);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_SYSKEYUP && swallowUp != Keys.None)
+            {
+                swallowUp = Keys.None;
+                return;
+            }
+            base.WndProc(ref m);
+        }
+
+        [DllImport("user32.dll")]
+        static extern short GetAsyncKeyState(int vKey);
+
+        static bool Down(Keys k) => (GetAsyncKeyState((int)k) & 0x8000) != 0;
+
+        static Keys Resolve(Keys k)
+        {
+            switch (k)
+            {
+                case Keys.ShiftKey:
+                    return Down(Keys.RShiftKey) ? Keys.RShiftKey : Keys.LShiftKey;
+                case Keys.ControlKey:
+                    return Down(Keys.RControlKey) ? Keys.RControlKey : Keys.LControlKey;
+                case Keys.Menu:
+                    return Down(Keys.RMenu) ? Keys.RMenu : Keys.LMenu;
+                default:
+                    return k;
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            float s = DeviceDpi / 96f;
+            g.Clear(Parent?.BackColor ?? Theme.Back);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
+            Color fill = capturing ? Theme.Blend(Theme.SurfaceHi, Theme.Accent, 0.25f) : hover ? Theme.Border : Theme.SurfaceHi;
+            using (var path = Theme.RoundRect(r, 6 * s))
+            using (var b = new SolidBrush(fill))
+            using (var pen = new Pen(capturing ? Theme.Accent : Theme.Border, (capturing ? 1.8f : 1f) * s))
+            {
+                g.FillPath(b, path);
+                g.DrawPath(pen, path);
+                if (!capturing && Focused && ShowFocusCues)
+                    using (var focus = new Pen(Color.FromArgb(200, 255, 255, 255), 1.5f * s)) g.DrawPath(focus, path);
+            }
+            // keycap bottom edge
+            if (!capturing)
+                using (var edge = new Pen(Theme.Blend(Theme.Border, Theme.Back, 0.3f), 2f * s))
+                    g.DrawLine(edge, 6 * s, Height - 1.5f * s, Width - 6 * s, Height - 1.5f * s);
+
+            string text = capturing ? "Press a key..." : keys.Length == 0 ? "—" : KeyMap.DisplayText(keys);
+            Color fg = capturing ? Theme.Accent : keys.Length == 0 ? Theme.Muted : Theme.Text;
+            TextRenderer.DrawText(g, text, capturing ? WaitFont : Font, ClientRectangle, fg,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+        }
+    }
+
+    /// <summary>On / off switch (a CheckBox drawn as a sliding pill).</summary>
+    sealed class ToggleSwitch : CheckBox
+    {
+        public ToggleSwitch()
+        {
+            AutoSize = false;
+            Size = new Size(46, 24);
+            Cursor = Cursors.Hand;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        }
+
+        protected override void OnCheckedChanged(EventArgs e)
+        {
+            base.OnCheckedChanged(e);
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Parent?.BackColor ?? Theme.Back);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            float s = DeviceDpi / 96f;
+            var track = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
+            using (var path = Theme.RoundRect(track, track.Height / 2))
+            using (var b = new SolidBrush(Checked ? Theme.Accent : Theme.Border))
+            {
+                g.FillPath(b, path);
+                if (Focused && ShowFocusCues)
+                    using (var pen = new Pen(Color.FromArgb(200, 255, 255, 255), 1.5f * s)) g.DrawPath(pen, path);
+            }
+            float d = Height - 7 * s;
+            float x = Checked ? Width - d - 3.5f * s : 3.5f * s;
+            g.FillEllipse(Brushes.White, x, (Height - d) / 2f, d, d);
         }
     }
 

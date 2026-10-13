@@ -250,6 +250,9 @@ namespace LanPad.Host
                 return null;
             }
 
+            // hidden window = "background" to Windows: without this it may slow the encoder down
+            Tweaks.Boost(p, "ffmpeg");
+
             string ffLog = Path.Combine(AppPaths.TempDir, "LanPad-ffmpeg.log");
             p.ErrorDataReceived += (s, e) =>
             {
