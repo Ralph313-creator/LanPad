@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using LanPad.Host;
@@ -36,6 +37,7 @@ namespace LanPad.Join
         readonly List<Player> players = new List<Player>();
         Thread watchdog;
         volatile bool wanted;
+        volatile bool away;
 
         public Viewer(string preferred)
         {
@@ -166,12 +168,76 @@ namespace LanPad.Join
             }
         }
 
+        [DllImport("user32.dll")]
+        static extern bool ShowWindow(IntPtr hwnd, int cmd);
+
+        [DllImport("user32.dll")]
+        static extern bool IsIconic(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        static extern bool IsWindowVisible(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int w, int h, uint flags);
+
+        const int SW_MINIMIZE = 6, SW_RESTORE = 9;
+
+        /// <summary>
+        /// "On my PC": minimizes the video window (the sound keeps playing), and keeps it minimized even if
+        /// the watchdog restarts the player. False = restore it full screen and on top again.
+        /// </summary>
+        public void SetAway(bool value)
+        {
+            away = value;
+            IntPtr h = VideoWindow();
+            if (h == IntPtr.Zero) return;
+            if (value)
+            {
+                ShowWindow(h, SW_MINIMIZE);
+            }
+            else
+            {
+                const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_SHOWWINDOW = 0x40;
+                ShowWindow(h, SW_RESTORE);
+                SetWindowPos(h, new IntPtr(-1) /* HWND_TOPMOST */, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW);
+            }
+        }
+
+        /// <summary>True while the video window is minimized (tests).</summary>
+        public bool IsVideoMinimized
+        {
+            get
+            {
+                IntPtr h = VideoWindow();
+                return h != IntPtr.Zero && IsIconic(h);
+            }
+        }
+
+        IntPtr VideoWindow()
+        {
+            Process p;
+            lock (gate) p = players.Count > 0 ? players[0].Proc : null;
+            try
+            {
+                if (p == null || p.HasExited) return IntPtr.Zero;
+                p.Refresh();
+                return p.MainWindowHandle;
+            }
+            catch (InvalidOperationException) { return IntPtr.Zero; }
+        }
+
         void Watch()
         {
             while (true)
             {
                 Thread.Sleep(1000);
                 if (!wanted) continue;
+                if (away)
+                {
+                    // a restarted player opens full screen again: put it back down while the player is away
+                    IntPtr h = VideoWindow();
+                    if (h != IntPtr.Zero && IsWindowVisible(h) && !IsIconic(h)) ShowWindow(h, SW_MINIMIZE);
+                }
                 List<Player> snapshot;
                 lock (gate) snapshot = new List<Player>(players);
                 foreach (var p in snapshot)
@@ -198,6 +264,7 @@ namespace LanPad.Join
         public void Stop()
         {
             wanted = false;
+            away = false;
             lock (gate)
             {
                 foreach (var p in players)

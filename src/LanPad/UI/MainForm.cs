@@ -33,6 +33,8 @@ namespace LanPad.UI
 
         Panel menuPage, hostPage, joinListPage, joinedPage, settingsPage;
         Label joinedHotkeys;
+        FlatButton awayButton;
+        bool away, padBeforeAway; // joined player switched to their own PC (stream hidden, Pad mode off)
 
         // smooth-play tweaks (Tweaks) for the running host / join session
         IDisposable hostTweaks, joinTweaks;
@@ -40,7 +42,7 @@ namespace LanPad.UI
         // Settings page
         DarkComboBox fpsBox, bitrateBox, encoderBox, viewerBox, resendBox, cornerBox, opacityBox;
         ToggleSwitch highPrioritySwitch, noThrottlingSwitch, keepAwakeSwitch, autoPadSwitch, fullscreenSwitch, swallowMouseSwitch, overlaySwitch;
-        KeyButton padKeyButton, leaveKeyButton, overlayKeyButton;
+        KeyButton padKeyButton, leaveKeyButton, overlayKeyButton, switchKeyButton;
 
         // key cheat sheet on top of the game (joined PC)
         readonly KeyOverlay overlay = new KeyOverlay();
@@ -448,12 +450,22 @@ namespace LanPad.UI
                 ToggleRow("Block mouse clicks in Pad mode", "Stops accidental clicks on the stream window.", out swallowMouseSwitch)));
 
             padKeyButton = HotkeyButton();
-            leaveKeyButton = HotkeyButton();
+            switchKeyButton = HotkeyButton();
             overlayKeyButton = HotkeyButton();
+            leaveKeyButton = HotkeyButton();
+            // two rows of two: the four captions do not fit next to each other
+            Control HotkeyField(string caption, KeyButton b)
+            {
+                var f = Field(caption, b);
+                f.MinimumSize = new Size(260, 0);
+                return f;
+            }
+            var secondRow = Row(HotkeyField("Show / hide key cheat sheet", overlayKeyButton), HotkeyField("Leave the game", leaveKeyButton));
+            secondRow.Margin = new Padding(0, 10, 0, 4);
             col.Controls.Add(Section("Hotkeys  ·  joined PC"));
             col.Controls.Add(AutoCard(
-                Row(Field("Pad mode on / off", padKeyButton), Field("Leave the game", leaveKeyButton),
-                    Field("Show / hide key cheat sheet", overlayKeyButton)),
+                Row(HotkeyField("Pad mode on / off", padKeyButton), HotkeyField("Switch to my PC / back to the game", switchKeyButton)),
+                secondRow,
                 Hint("Click a box, then press the key - with Ctrl, Shift or Alt if you like (e.g. Ctrl+F12). Esc = cancel. " +
                      "They work in Pad mode too. A key without Ctrl / Shift / Alt stops working as a controller button.")));
 
@@ -485,7 +497,7 @@ namespace LanPad.UI
             var b = new KeyButton { HotkeyMode = true, Size = new Size(170, 30), Margin = new Padding(0, 2, 16, 4) };
             b.KeyChosen += (button, key) =>
             {
-                var others = new[] { padKeyButton, leaveKeyButton, overlayKeyButton }.Where(x => x != button && x != null);
+                var others = new[] { padKeyButton, leaveKeyButton, overlayKeyButton, switchKeyButton }.Where(x => x != button && x != null);
                 if (others.Any(x => x.Value.Length == 1 && x.Value[0] == key))
                 {
                     ShowSettingsStatus($"{Hk(key)} is already another hotkey - pick a different one.", Theme.Bad);
@@ -535,6 +547,7 @@ namespace LanPad.UI
             padKeyButton.Value = new[] { c.PadKey };
             leaveKeyButton.Value = new[] { c.LeaveKey };
             overlayKeyButton.Value = new[] { c.OverlayKey };
+            switchKeyButton.Value = new[] { c.SwitchKey };
             overlaySwitch.Checked = c.Overlay;
             SelectChoice(cornerBox, c.OverlayCorner, c.OverlayCorner);
             SelectChoice(opacityBox, c.OverlayOpacity, $"{c.OverlayOpacity} %");
@@ -545,7 +558,7 @@ namespace LanPad.UI
         {
             if (client != null) return; // joined: the real one is on screen
             overlay.ShowSheet("Preview  ·  NBA 2K14", "Controller 2", cfg.KeyMap, true,
-                $"{Hk(padKeyButton.Value[0])} pad on/off   ·   {Hk(overlayKeyButton.Value[0])} hide   ·   {Hk(leaveKeyButton.Value[0])} leave",
+                FooterText(padKeyButton.Value[0], switchKeyButton.Value[0], overlayKeyButton.Value[0], leaveKeyButton.Value[0]),
                 Value(cornerBox, cfg.OverlayCorner), Value(opacityBox, cfg.OverlayOpacity));
             previewTimer.Stop();
             previewTimer.Start();
@@ -573,11 +586,13 @@ namespace LanPad.UI
             cfg.PadKey = padKeyButton.Value[0];
             cfg.LeaveKey = leaveKeyButton.Value[0];
             cfg.OverlayKey = overlayKeyButton.Value[0];
+            cfg.SwitchKey = switchKeyButton.Value[0];
             if (hook != null)
             {
                 hook.PadKey = cfg.PadKey;
                 hook.LeaveKey = cfg.LeaveKey;
                 hook.OverlayKey = cfg.OverlayKey;
+                hook.SwitchKey = cfg.SwitchKey;
             }
             cfg.Overlay = overlaySwitch.Checked;
             cfg.OverlayCorner = Value(cornerBox, cfg.OverlayCorner);
@@ -992,12 +1007,83 @@ namespace LanPad.UI
             col.Controls.Add(keysCard);
             joinedHotkeys = Para(HotkeysText(), 10f, Theme.Text);
             col.Controls.Add(joinedHotkeys);
-            col.Controls.Add(NewButton("Leave game", (s, e) => LeaveGame(null), ButtonKind.Danger));
+            awayButton = NewButton("", (s, e) => ToggleAway(), ButtonKind.Primary, 200);
+            col.Controls.Add(Row(awayButton, NewButton("Leave game", (s, e) => LeaveGame(null), ButtonKind.Danger)));
+            UpdateAwayButton();
         }
 
         string HotkeysText() =>
             $"{Hk(cfg.PadKey)} = Pad mode on/off (off = keyboard works normally again).   " +
+            $"{Hk(cfg.SwitchKey)} = switch to your own PC and back.   " +
             $"{Hk(cfg.LeaveKey)} = leave the game.   {Hk(cfg.OverlayKey)} = show / hide the key cheat sheet.";
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern IntPtr GetForegroundWindow();
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr processId);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern uint GetCurrentThreadId();
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern bool AttachThreadInput(uint from, uint to, bool attach);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern bool SetForegroundWindow(IntPtr hwnd);
+
+        /// <summary>
+        /// Windows does not let a background program take the foreground (the hotkey comes through the hook, not
+        /// as a key press to LanPad), so join the foreground window's input queue for a moment first.
+        /// </summary>
+        void BringToForeground()
+        {
+            IntPtr fg = GetForegroundWindow();
+            uint other = fg == IntPtr.Zero ? 0 : GetWindowThreadProcessId(fg, IntPtr.Zero), me = GetCurrentThreadId();
+            bool attached = other != 0 && other != me && AttachThreadInput(other, me, true);
+            try
+            {
+                SetForegroundWindow(Handle);
+                Activate();
+                BringToFront();
+            }
+            finally
+            {
+                if (attached) AttachThreadInput(other, me, false);
+            }
+        }
+
+        void UpdateAwayButton() => awayButton.Text = away ? "▶  Back to the game" : "Switch to my PC";
+
+        /// <summary>
+        /// The switch hotkey (Alt+F12) / button while joined: "on my PC" minimizes the stream, turns Pad mode off
+        /// (keyboard and mouse work normally, the host's controller is released) and shows LanPad; again = back to
+        /// the game with Pad mode as it was. The player stays joined and keeps the controller.
+        /// </summary>
+        void ToggleAway()
+        {
+            if (client == null || hook == null) return;
+            away = !away;
+            if (away)
+            {
+                padBeforeAway = hook.PadMode;
+                hook.PadMode = false; // also releases every button on the host
+                viewer?.SetAway(true);
+                if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+                BringToForeground();
+                toast.ShowMessage($"Your PC  -  {Hk(cfg.SwitchKey)} = back to the game", Color.LightSkyBlue, 4000);
+                Log.Info("Switched to this PC (stream hidden, Pad mode off)");
+            }
+            else
+            {
+                viewer?.SetAway(false);
+                hook.PadMode = padBeforeAway;
+                toast.ShowMessage("Back in the game" + (padBeforeAway ? "  -  PAD MODE ON" : ""), Color.LightGreen, 2500);
+                Log.Info("Back to the game");
+            }
+            UpdateAwayButton();
+            UpdatePadModeLabel(false);
+        }
 
         void OpenJoin(string address)
         {
@@ -1083,7 +1169,11 @@ namespace LanPad.UI
             if (client != null) return;
             try
             {
-                hook = new KeyboardHook { PadKey = cfg.PadKey, LeaveKey = cfg.LeaveKey, OverlayKey = cfg.OverlayKey, SwallowMouse = cfg.SwallowMouse };
+                hook = new KeyboardHook
+                {
+                    PadKey = cfg.PadKey, LeaveKey = cfg.LeaveKey, OverlayKey = cfg.OverlayKey, SwitchKey = cfg.SwitchKey,
+                    SwallowMouse = cfg.SwallowMouse,
+                };
                 hook.Install();
             }
             catch (Exception ex)
@@ -1111,6 +1201,12 @@ namespace LanPad.UI
             hook.PadModeChanged += on => UpdatePadModeLabel(true);
             hook.LeaveRequested += () => BeginInvoke((Action)(() => LeaveGame(null)));
             hook.OverlayToggleRequested += () => BeginInvoke((Action)ToggleOverlay);
+            hook.SwitchRequested += () => BeginInvoke((Action)ToggleAway);
+            // Pad mode key while on your PC = straight back into the game with Pad mode on
+            hook.PadModeChanged += on =>
+            {
+                if (on && away) BeginInvoke((Action)(() => { if (away) { padBeforeAway = true; ToggleAway(); } }));
+            };
             client.StatusChanged += s => BeginInvoke((Action)(() => OnJoinStatus(c, s)));
             client.GameChanged += () => BeginInvoke((Action)(() => OnHostGameChanged(c)));
 
@@ -1125,7 +1221,7 @@ namespace LanPad.UI
         void UpdateOverlay()
         {
             var c = client;
-            if (c == null || !overlayShown)
+            if (c == null || !overlayShown || away)
             {
                 overlay.HideSheet();
                 return;
@@ -1139,7 +1235,10 @@ namespace LanPad.UI
         static string Hk(Keys hotkey) => KeyMap.HotkeyText(hotkey);
 
         string OverlayFooter() =>
-            $"{Hk(cfg.PadKey)} pad on/off   ·   {Hk(cfg.OverlayKey)} hide   ·   {Hk(cfg.LeaveKey)} leave";
+            FooterText(cfg.PadKey, cfg.SwitchKey, cfg.OverlayKey, cfg.LeaveKey);
+
+        static string FooterText(Keys pad, Keys toPc, Keys hide, Keys leave) =>
+            $"{Hk(pad)} pad   ·   {Hk(toPc)} my PC   ·   {Hk(hide)} hide   ·   {Hk(leave)} leave";
 
         /// <summary>The overlay hotkey (Shift+F12) while joined.</summary>
         void ToggleOverlay()
@@ -1223,10 +1322,11 @@ namespace LanPad.UI
         void UpdatePadModeLabel(bool withToast)
         {
             bool on = hook != null && hook.PadMode;
-            padModeLabel.Text = on
-                ? $"PAD MODE: ON   (keyboard = controller, {Hk(cfg.PadKey)} to turn off)"
+            padModeLabel.Text = away ? $"ON YOUR PC   (stream hidden, {Hk(cfg.SwitchKey)} = back to the game)"
+                : on ? $"PAD MODE: ON   (keyboard = controller, {Hk(cfg.PadKey)} to turn off)"
                 : $"PAD MODE: OFF  (keyboard works normally, {Hk(cfg.PadKey)} to turn on)";
-            padModeLabel.Fill = on ? Theme.Blend(Theme.Good, Theme.Back, 0.25f) : Theme.Blend(Theme.Bad, Theme.Back, 0.2f);
+            padModeLabel.Fill = away ? Theme.Blend(Theme.Accent, Theme.Back, 0.3f)
+                : on ? Theme.Blend(Theme.Good, Theme.Back, 0.25f) : Theme.Blend(Theme.Bad, Theme.Back, 0.2f);
             if (withToast)
                 toast.ShowMessage(on ? "PAD MODE ON" : "PAD MODE OFF - keyboard is normal", on ? Color.LightGreen : Color.Orange);
             UpdateOverlay();
@@ -1235,6 +1335,8 @@ namespace LanPad.UI
         void LeaveGame(string message)
         {
             bool wasJoined = client != null;
+            away = false;
+            if (awayButton != null) UpdateAwayButton();
             viewer?.Stop();
             viewer = null;
             if (hook != null)

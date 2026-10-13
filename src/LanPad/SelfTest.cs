@@ -229,20 +229,29 @@ namespace LanPad
                   !KeyMap.TryParseHotkey("", out _, out _), "hotkeys: Ctrl+Shift alone, unknown modifiers and empty are refused");
 
             var d0 = new LanPadConfig();
-            Check(KeyboardHook.Match((int)Keys.F12, Keys.None, d0.PadKey, d0.LeaveKey, d0.OverlayKey) == KeyboardHook.Hotkey.PadMode &&
-                  KeyboardHook.Match((int)Keys.F12, Keys.Control, d0.PadKey, d0.LeaveKey, d0.OverlayKey) == KeyboardHook.Hotkey.Leave &&
-                  KeyboardHook.Match((int)Keys.F12, Keys.Shift, d0.PadKey, d0.LeaveKey, d0.OverlayKey) == KeyboardHook.Hotkey.Overlay &&
-                  KeyboardHook.Match((int)Keys.F12, Keys.Alt, d0.PadKey, d0.LeaveKey, d0.OverlayKey) == KeyboardHook.Hotkey.None &&
-                  KeyboardHook.Match((int)Keys.K, Keys.None, d0.PadKey, d0.LeaveKey, d0.OverlayKey) == KeyboardHook.Hotkey.None,
-                "hotkeys: F12 / Ctrl+F12 / Shift+F12 = pad mode / leave / cheat sheet; Alt+F12 and K are not hotkeys");
+            KeyboardHook.Hotkey M(Keys key, Keys mods) =>
+                KeyboardHook.Match((int)key, mods, d0.PadKey, d0.LeaveKey, d0.OverlayKey, d0.SwitchKey);
+            Check(M(Keys.F12, Keys.None) == KeyboardHook.Hotkey.PadMode && M(Keys.F12, Keys.Control) == KeyboardHook.Hotkey.Leave &&
+                  M(Keys.F12, Keys.Shift) == KeyboardHook.Hotkey.Overlay && M(Keys.F12, Keys.Alt) == KeyboardHook.Hotkey.Switch &&
+                  M(Keys.F12, Keys.Control | Keys.Alt) == KeyboardHook.Hotkey.None && M(Keys.K, Keys.None) == KeyboardHook.Hotkey.None,
+                "hotkeys: F12 / Ctrl+F12 / Shift+F12 / Alt+F12 = pad mode / leave / cheat sheet / my PC; Ctrl+Alt+F12 and K are not");
 
-            File.WriteAllText(tmp, "[Join]\nToggleKey=F9\nLeaveKey=Alt+Q\nOverlayKey=Ctrl+H\n");
+            File.WriteAllText(tmp, "[Join]\nToggleKey=F9\nLeaveKey=Alt+Q\nOverlayKey=Ctrl+H\nSwitchKey=Ctrl+Tab\n");
             var hk = LanPadConfig.Load(tmp, null);
-            Check(hk.PadKey == Keys.F9 && hk.LeaveKey == (Keys.Alt | Keys.Q) && hk.OverlayKey == (Keys.Control | Keys.H),
-                "config: own hotkeys loaded (F9, Alt+Q, Ctrl+H)");
+            Check(hk.PadKey == Keys.F9 && hk.LeaveKey == (Keys.Alt | Keys.Q) && hk.OverlayKey == (Keys.Control | Keys.H) &&
+                  hk.SwitchKey == (Keys.Control | Keys.Tab),
+                "config: own hotkeys loaded (F9, Alt+Q, Ctrl+H, Ctrl+Tab)");
             hk.LeaveKey = Keys.Control | Keys.Shift | Keys.L;
+            hk.SwitchKey = Keys.Alt | Keys.D1;
             hk.SaveSettings(tmp);
-            Check(LanPadConfig.Load(tmp, null).LeaveKey == (Keys.Control | Keys.Shift | Keys.L), "config: hotkeys saved and read back");
+            var hkBack = LanPadConfig.Load(tmp, null);
+            Check(hkBack.LeaveKey == (Keys.Control | Keys.Shift | Keys.L) && hkBack.SwitchKey == (Keys.Alt | Keys.D1),
+                "config: hotkeys saved and read back");
+            File.WriteAllText(tmp, "[Join]\nSwitchKey=Shift+F12\n");
+            var swWarn = new List<string>();
+            var sw = LanPadConfig.Load(tmp, swWarn);
+            Check(sw.SwitchKey == (Keys.Alt | Keys.F12) && sw.OverlayKey == (Keys.Shift | Keys.F12) && swWarn.Count == 1,
+                "config: switch key equal to the cheat sheet key -> default hotkeys + warning");
             File.WriteAllText(tmp, "[Join]\nToggleKey=F9\nLeaveKey=F9\n[Keys]\nA=F12\n");
             var hkWarn = new List<string>();
             var dup = LanPadConfig.Load(tmp, hkWarn);

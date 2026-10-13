@@ -38,6 +38,8 @@ namespace LanPad.Config
         public Keys LeaveKey = Keys.Control | Keys.F12;
         /// <summary>Show / hide the key cheat sheet.</summary>
         public Keys OverlayKey = Keys.Shift | Keys.F12;
+        /// <summary>Switch to this PC (stream hidden, Pad mode off) and back to the game.</summary>
+        public Keys SwitchKey = Keys.Alt | Keys.F12;
         public bool SwallowMouse = true;
         public string Viewer = "mpv";
         public bool AutoPadMode = true;
@@ -58,6 +60,8 @@ namespace LanPad.Config
         public int OverlayOpacity = 85;
 
         public static readonly string[] OverlayCorners = { "TopLeft", "TopRight", "BottomLeft", "BottomRight" };
+
+        public Keys[] Hotkeys => new[] { PadKey, LeaveKey, OverlayKey, SwitchKey };
 
         // [Keys]
         public KeyMap KeyMap = KeyMap.Default();
@@ -107,13 +111,16 @@ namespace LanPad.Config
             c.PadKey = Hotkey("ToggleKey", c.PadKey);
             c.LeaveKey = Hotkey("LeaveKey", c.LeaveKey);
             c.OverlayKey = Hotkey("OverlayKey", c.OverlayKey);
-            if (c.PadKey == c.LeaveKey || c.PadKey == c.OverlayKey || c.LeaveKey == c.OverlayKey)
+            c.SwitchKey = Hotkey("SwitchKey", c.SwitchKey);
+            if (c.Hotkeys.Distinct().Count() < c.Hotkeys.Length)
             {
-                warnings?.Add("[Join] ToggleKey, LeaveKey and OverlayKey must be different (using F12, Ctrl+F12, Shift+F12)");
+                warnings?.Add("[Join] ToggleKey, LeaveKey, OverlayKey and SwitchKey must be different " +
+                              "(using F12, Ctrl+F12, Shift+F12, Alt+F12)");
                 var d = new LanPadConfig();
                 c.PadKey = d.PadKey;
                 c.LeaveKey = d.LeaveKey;
                 c.OverlayKey = d.OverlayKey;
+                c.SwitchKey = d.SwitchKey;
             }
 
             c.Overlay = ini.GetBool("Join", "Overlay", c.Overlay);
@@ -137,7 +144,7 @@ namespace LanPad.Config
             }
 
             // a hotkey without Ctrl / Shift / Alt takes that key away from the controller
-            foreach (Keys hotkey in new[] { c.PadKey, c.LeaveKey, c.OverlayKey }.Where(h => (h & Keys.Modifiers) == 0))
+            foreach (Keys hotkey in c.Hotkeys.Where(h => (h & Keys.Modifiers) == 0))
                 foreach (PadAction action in Enum.GetValues(typeof(PadAction)))
                     if (c.KeyMap.Get(action).Contains(hotkey))
                         warnings?.Add($"[Keys] {action} uses the hotkey {KeyMap.HotkeyText(hotkey)}; it will not work as a button");
@@ -158,6 +165,7 @@ namespace LanPad.Config
             IniFile.SetValue(path, "Join", "ToggleKey", KeyMap.HotkeyText(PadKey));
             IniFile.SetValue(path, "Join", "LeaveKey", KeyMap.HotkeyText(LeaveKey));
             IniFile.SetValue(path, "Join", "OverlayKey", KeyMap.HotkeyText(OverlayKey));
+            IniFile.SetValue(path, "Join", "SwitchKey", KeyMap.HotkeyText(SwitchKey));
             IniFile.SetValue(path, "Join", "Overlay", B(Overlay));
             IniFile.SetValue(path, "Join", "OverlayCorner", OverlayCorner);
             IniFile.SetValue(path, "Join", "OverlayOpacity", OverlayOpacity.ToString());
