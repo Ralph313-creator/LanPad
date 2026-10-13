@@ -43,6 +43,8 @@ LanPad lets players sit at **different PCs**:
    - **Shift + F12** = hide / show the key cheat sheet
    - **Ctrl + F12** = leave the game
 
+   (all three can be changed in **Settings → Hotkeys**)
+
 **Controls — the host's game picks the layout (all: WASD = move, arrows = right stick, Enter/Backspace = Start/Back, 1-4 = D-pad)**
 
 | Layout | Used by | Buttons |
@@ -69,10 +71,9 @@ Exe=D:\Games\My Game\game.exe
 Most players only need the **⚙ Settings** button on the LanPad start screen: stream quality
 (frame rate, bitrate, encoder), the smooth-gameplay tweaks and the join options. **Save** writes them to `lanpad.ini`.
 
-**⌨ Controls** (start screen, or **Edit keys** while hosting) sets the keys: pick a layout (Sports, Fighting, Action,
-Racing), click a button, press the key. Esc = cancel, right-click = no key. The Pad mode key (F12) can be changed there too.
-- On the **host**, Save sends the new keys to every joined player right away.
-- On a **joined PC**, turn on **Use my own keys when I join** to always play with this PC's keys instead of the host's.
+**Hotkeys** (Settings): Pad mode on/off, leave the game, show / hide the key cheat sheet. Click a box and press the key,
+with Ctrl / Shift / Alt if you like (e.g. `Ctrl+F12`). The controller keys themselves come from the host's game
+(layout table above, `[Keys]`, `games.user.ini`).
 
 **Smooth gameplay tweaks** (`[Performance]`, all on by default, all undone when you stop hosting / leave):
 
@@ -90,8 +91,8 @@ Other settings:
 - `HostPlays=true` (the host keyboard is a player; `false` = all players join from other PCs), `MaxPlayers=4`
 - `BitrateKbps=15000`, `Fps=60`, `Encoder=auto|amf|x264`
 - `[Keys]` — the Sports layout, any key per button, several keys with commas: `A=K,NumPad2`
-- `[Keys.Fighting]`, `[Keys.Action]`, `[Keys.Racing]` — your changes to the built-in layouts (written by the Controls page)
-- `ToggleKey=F12`, `AutoPadMode=true`, `Fullscreen=true`, `Viewer=mpv|ffplay`, `OwnKeys=false`
+- `ToggleKey=F12` (Pad mode), `LeaveKey=Ctrl+F12`, `OverlayKey=Shift+F12`
+- `AutoPadMode=true`, `Fullscreen=true`, `Viewer=mpv|ffplay`
 - `Overlay=true` (key cheat sheet on top of the game), `OverlayCorner=TopRight|TopLeft|BottomRight|BottomLeft`, `OverlayOpacity=85`
 
 ## How it works

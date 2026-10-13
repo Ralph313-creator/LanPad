@@ -192,7 +192,7 @@ namespace LanPad
             Check(cfg.MaxPlayers == 4, "config: MaxPlayers clamped to 4");
             Check(cfg.KeyMap.Get(PadAction.A).SequenceEqual(new[] { Keys.Z }), "config: custom key loaded");
             Check(cfg.KeyMap.Get(PadAction.B).SequenceEqual(new[] { Keys.L }), "config: bad key keeps default");
-            Check(cfg.ToggleKey == Keys.F11, "config: toggle key loaded");
+            Check(cfg.PadKey == Keys.F11, "config: toggle key loaded");
             Check(warnings.Count == 1 && warnings[0].Contains("Banana"), "config: warning for bad key");
             File.Delete(tmp);
 
@@ -220,34 +220,36 @@ namespace LanPad
                 "config: bad cheat sheet corner -> TopRight with a warning, opacity at least 30 %");
             File.Delete(tmp);
 
-            // Controls page: key text round trip, per-layout keys, saving
-            var special = new[] { Keys.LShiftKey, Keys.RControlKey, Keys.Return, Keys.Back, Keys.OemSemicolon, Keys.D7,
-                                  Keys.Oemcomma, Keys.NumPad2, Keys.Space, Keys.RMenu, Keys.Up, Keys.F5 };
-            bool roundTrip = special.All(k => KeyMap.TryParseKeyList(KeyMap.IniText(new[] { k }), out var back, out _) &&
-                                              back.Length == 1 && back[0] == k);
-            Check(roundTrip, "keys: every key the Controls page can pick is saved as text that reads back the same");
+            // hotkeys (Settings > Hotkeys)
+            var hotkeys = new[] { Keys.F12, Keys.Control | Keys.F12, Keys.Shift | Keys.F12, Keys.Alt | Keys.P,
+                                  Keys.Control | Keys.Shift | Keys.Oemcomma, Keys.Pause, Keys.Control | Keys.D9, Keys.Escape | Keys.Shift };
+            Check(hotkeys.All(h => KeyMap.TryParseHotkey(KeyMap.HotkeyText(h), out var back, out _) && back == h),
+                "hotkeys: every hotkey is saved as text that reads back the same (e.g. Ctrl+F12, Alt+P)");
+            Check(!KeyMap.TryParseHotkey("Ctrl+Shift", out _, out _) && !KeyMap.TryParseHotkey("Win+F1", out _, out _) &&
+                  !KeyMap.TryParseHotkey("", out _, out _), "hotkeys: Ctrl+Shift alone, unknown modifiers and empty are refused");
 
-            File.WriteAllText(tmp, "[Join]\nOwnKeys=true\n[Keys.Fighting]\nA=Space\n");
-            var keyCfg = LanPadConfig.Load(tmp, null);
-            Check(keyCfg.OwnKeys && MapKeys(keyCfg.KeysFor(ControlLayout.Fighting), Keys.Space).Buttons == PadButtons.A &&
-                  MapKeys(keyCfg.KeysFor(ControlLayout.Fighting), Keys.U).Buttons == PadButtons.X,
-                "config: [Keys.Fighting] changes one key, the rest stays the built-in fighting layout");
-            var tekkenLike = new GameProfile { Name = "T", Layout = ControlLayout.Fighting };
-            tekkenLike.KeyChanges[PadAction.Y] = new[] { Keys.Z };
-            var built = tekkenLike.BuildKeyMap(keyCfg);
-            Check(MapKeys(built, Keys.Space).Buttons == PadButtons.A && MapKeys(built, Keys.Z).Buttons == PadButtons.Y,
-                "keys: a game uses this PC's layout keys plus its own games.ini changes");
+            var d0 = new LanPadConfig();
+            Check(KeyboardHook.Match((int)Keys.F12, Keys.None, d0.PadKey, d0.LeaveKey, d0.OverlayKey) == KeyboardHook.Hotkey.PadMode &&
+                  KeyboardHook.Match((int)Keys.F12, Keys.Control, d0.PadKey, d0.LeaveKey, d0.OverlayKey) == KeyboardHook.Hotkey.Leave &&
+                  KeyboardHook.Match((int)Keys.F12, Keys.Shift, d0.PadKey, d0.LeaveKey, d0.OverlayKey) == KeyboardHook.Hotkey.Overlay &&
+                  KeyboardHook.Match((int)Keys.F12, Keys.Alt, d0.PadKey, d0.LeaveKey, d0.OverlayKey) == KeyboardHook.Hotkey.None &&
+                  KeyboardHook.Match((int)Keys.K, Keys.None, d0.PadKey, d0.LeaveKey, d0.OverlayKey) == KeyboardHook.Hotkey.None,
+                "hotkeys: F12 / Ctrl+F12 / Shift+F12 = pad mode / leave / cheat sheet; Alt+F12 and K are not hotkeys");
 
-            var racing = keyCfg.KeysFor(ControlLayout.Racing).Clone();
-            racing.Set(PadAction.A, Keys.RShiftKey);
-            keyCfg.SetKeys(ControlLayout.Racing, racing);
-            keyCfg.ToggleKey = Keys.F11;
-            keyCfg.SaveKeys(tmp, ControlLayout.Racing);
-            var keysBack = LanPadConfig.Load(tmp, null);
-            Check(MapKeys(keysBack.KeysFor(ControlLayout.Racing), Keys.RShiftKey).Buttons == PadButtons.A &&
-                  keysBack.ToggleKey == Keys.F11 && MapKeys(keysBack.KeysFor(ControlLayout.Fighting), Keys.Space).Buttons == PadButtons.A,
-                "config: saved keys read back (Racing A = R-Shift, Pad mode key F11, Fighting unchanged)");
+            File.WriteAllText(tmp, "[Join]\nToggleKey=F9\nLeaveKey=Alt+Q\nOverlayKey=Ctrl+H\n");
+            var hk = LanPadConfig.Load(tmp, null);
+            Check(hk.PadKey == Keys.F9 && hk.LeaveKey == (Keys.Alt | Keys.Q) && hk.OverlayKey == (Keys.Control | Keys.H),
+                "config: own hotkeys loaded (F9, Alt+Q, Ctrl+H)");
+            hk.LeaveKey = Keys.Control | Keys.Shift | Keys.L;
+            hk.SaveSettings(tmp);
+            Check(LanPadConfig.Load(tmp, null).LeaveKey == (Keys.Control | Keys.Shift | Keys.L), "config: hotkeys saved and read back");
+            File.WriteAllText(tmp, "[Join]\nToggleKey=F9\nLeaveKey=F9\n[Keys]\nA=F12\n");
+            var hkWarn = new List<string>();
+            var dup = LanPadConfig.Load(tmp, hkWarn);
+            Check(dup.PadKey == Keys.F12 && dup.LeaveKey == (Keys.Control | Keys.F12) && hkWarn.Count == 2,
+                "config: the same key twice -> default hotkeys + warning; a controller key used as hotkey -> warning");
             File.Delete(tmp);
+
 
             string real = Path.Combine(AppPaths.AppDir, "lanpad.ini");
             if (File.Exists(real))

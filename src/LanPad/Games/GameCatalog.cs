@@ -25,13 +25,9 @@ namespace LanPad.Games
         public bool Installed => !string.IsNullOrEmpty(Exe) && File.Exists(Exe);
 
         /// <summary>Key map for this game: its layout (Sports = the [Keys] map from lanpad.ini) plus per-game changes.</summary>
-        public KeyMap BuildKeyMap(KeyMap sportsKeys) => WithChanges(Layouts.Build(Layout, sportsKeys));
-
-        /// <summary>Key map for this game from this PC's keys for its layout (Controls page), plus per-game changes.</summary>
-        public KeyMap BuildKeyMap(LanPadConfig cfg) => WithChanges(cfg.KeysFor(Layout).Clone());
-
-        KeyMap WithChanges(KeyMap m)
+        public KeyMap BuildKeyMap(KeyMap sportsKeys)
         {
+            var m = Layouts.Build(Layout, sportsKeys);
             foreach (var kv in KeyChanges) m.Set(kv.Key, kv.Value);
             return m;
         }

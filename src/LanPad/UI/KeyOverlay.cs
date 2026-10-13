@@ -76,14 +76,13 @@ namespace LanPad.UI
         }
 
         /// <summary>Shows (or updates) the cheat sheet.</summary>
-        public void ShowSheet(string title, string subtitle, KeyMap keys, bool padOn, Keys toggleKey, string corner, int opacityPercent)
+        public void ShowSheet(string title, string subtitle, KeyMap keys, bool padOn, string hotkeys, string corner, int opacityPercent)
         {
             this.title = title ?? "";
             this.subtitle = subtitle ?? "";
             this.padOn = padOn;
             this.corner = corner ?? "TopRight";
-            string t = KeyMap.KeyName(toggleKey);
-            footer = $"{t} pad on/off   ·   Shift+{t} hide   ·   Ctrl+{t} leave";
+            footer = hotkeys ?? "";
             lines = BuildLines(keys ?? KeyMap.Default());
             // layered windows need an opacity below 100 % to stay visible with WS_EX_LAYERED set
             Opacity = Math.Max(0.3, Math.Min(0.99, opacityPercent / 100.0));

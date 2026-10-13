@@ -182,32 +182,56 @@ namespace LanPad.Join
             return k.ToString();
         }
 
-        /// <summary>Key list as lanpad.ini text that <see cref="TryParseKeyList"/> reads back (e.g. "LShift", "K,NumPad2").</summary>
-        public static string IniText(Keys[] keys) => string.Join(",", (keys ?? None).Select(IniName));
-
-        static string IniName(Keys k)
-        {
-            switch (k)
-            {
-                case Keys.Return: return "Enter";
-                case Keys.Back: return "Backspace";
-                case Keys.Escape: return "Esc";
-                case Keys.LShiftKey: return "LShift";
-                case Keys.RShiftKey: return "RShift";
-                case Keys.LControlKey: return "LCtrl";
-                case Keys.RControlKey: return "RCtrl";
-                case Keys.LMenu: return "LAlt";
-                case Keys.RMenu: return "RAlt";
-                case Keys.OemSemicolon: return ";";
-                case Keys.OemPeriod: return ".";
-                case Keys.OemQuestion: return "/";
-            }
-            if (k >= Keys.D0 && k <= Keys.D9) return ((int)(k - Keys.D0)).ToString();
-            return k.ToString(); // enum name ("Oemcomma", "NumPad2"), parsed back by Enum.TryParse
-        }
-
         /// <summary>Keys for one action as shown on screen: "K", "K / NumPad2", or "" for none.</summary>
         public static string DisplayText(Keys[] keys) => string.Join(" / ", (keys ?? None).Select(KeyName));
+
+        static bool IsModifier(Keys k) =>
+            k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey ||
+            k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey ||
+            k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu || k == Keys.LWin || k == Keys.RWin;
+
+        /// <summary>
+        /// LanPad shortcut like "F12", "Ctrl+F12" or "Shift+Alt+P": one key, optionally with Ctrl / Shift / Alt.
+        /// The result is the key code with WinForms modifier flags (Keys.Control | Keys.F12).
+        /// </summary>
+        public static bool TryParseHotkey(string text, out Keys hotkey, out string error)
+        {
+            hotkey = Keys.None;
+            error = null;
+            var parts = (text ?? "").Split('+').Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
+            if (parts.Count == 0) { error = "no key"; return false; }
+            Keys mods = Keys.None;
+            foreach (string m in parts.Take(parts.Count - 1))
+            {
+                switch (m.ToLowerInvariant())
+                {
+                    case "ctrl": case "control": mods |= Keys.Control; break;
+                    case "shift": mods |= Keys.Shift; break;
+                    case "alt": mods |= Keys.Alt; break;
+                    default: error = $"'{m}' is not Ctrl, Shift or Alt"; return false;
+                }
+            }
+            var list = new List<Keys>();
+            if (!TryParseKey(parts[parts.Count - 1], list) || list.Count != 1 || IsModifier(list[0]))
+            {
+                error = $"'{parts[parts.Count - 1]}' is not a single key";
+                return false;
+            }
+            hotkey = list[0] | mods;
+            return true;
+        }
+
+        /// <summary>"Ctrl+F12" - readable, and <see cref="TryParseHotkey"/> reads it back.</summary>
+        public static string HotkeyText(Keys hotkey)
+        {
+            var sb = new StringBuilder();
+            if ((hotkey & Keys.Control) != 0) sb.Append("Ctrl+");
+            if ((hotkey & Keys.Shift) != 0) sb.Append("Shift+");
+            if ((hotkey & Keys.Alt) != 0) sb.Append("Alt+");
+            Keys code = hotkey & Keys.KeyCode;
+            sb.Append(code == Keys.Oemcomma ? "Oemcomma" : KeyName(code)); // "," would not read back
+            return sb.ToString();
+        }
 
         string Names(PadAction a)
         {

@@ -9,9 +9,9 @@ namespace LanPad.Join
     /// <summary>
     /// Global low-level keyboard (and mouse) hook. Works while the stream viewer has focus.
     /// In Pad mode every key is captured for the controller and blocked from other programs,
-    /// so typing W/A/S/D never reaches the viewer or Windows. The toggle key (default F12)
-    /// switches Pad mode; Ctrl + toggle key asks to leave the game; Shift + toggle key shows / hides
-    /// the key cheat sheet.
+    /// so typing W/A/S/D never reaches the viewer or Windows. Three LanPad hotkeys (Settings) work
+    /// in and out of Pad mode: Pad mode on/off (F12), leave the game (Ctrl+F12) and show / hide the
+    /// key cheat sheet (Shift+F12).
     /// Must be installed on a thread with a message loop (the WinForms UI thread).
     /// </summary>
     public sealed class KeyboardHook : IDisposable
@@ -53,11 +53,26 @@ namespace LanPad.Join
         IntPtr mouseHook = IntPtr.Zero;
 
         readonly bool[] down = new bool[256];
-        bool toggleHeld;
+        int hotkeyHeldVk; // key of the hotkey being held: its repeats and key-up are swallowed too
         volatile bool padMode;
 
-        public Keys ToggleKey { get; set; } = Keys.F12;
+        /// <summary>LanPad shortcuts (key code + Ctrl / Shift / Alt flags), set in Settings > Hotkeys.</summary>
+        public Keys PadKey { get; set; } = Keys.F12;
+        public Keys LeaveKey { get; set; } = Keys.Control | Keys.F12;
+        public Keys OverlayKey { get; set; } = Keys.Shift | Keys.F12;
         public bool SwallowMouse { get; set; } = true;
+
+        public enum Hotkey { None, PadMode, Leave, Overlay }
+
+        /// <summary>Which LanPad shortcut a key press is: same key and exactly the same Ctrl / Shift / Alt.</summary>
+        public static Hotkey Match(int vk, Keys modifiers, Keys padKey, Keys leaveKey, Keys overlayKey)
+        {
+            bool Is(Keys hotkey) => (int)(hotkey & Keys.KeyCode) == vk && (hotkey & Keys.Modifiers) == modifiers;
+            if (Is(leaveKey)) return Hotkey.Leave;
+            if (Is(overlayKey)) return Hotkey.Overlay;
+            if (Is(padKey)) return Hotkey.PadMode;
+            return Hotkey.None;
+        }
 
         /// <summary>A captured key went down or up (raised on the UI thread, keep handlers fast).</summary>
         public event Action KeysChanged;
@@ -119,20 +134,22 @@ namespace LanPad.Join
 
                 if (!injected && vk > 0 && vk < 256 && (isDown || isUp))
                 {
-                    if (vk == (int)ToggleKey)
+                    if (vk == hotkeyHeldVk)
                     {
-                        if (isDown && !toggleHeld)
+                        if (isUp) hotkeyHeldVk = 0;
+                        return (IntPtr)1; // repeat / release of a hotkey: never pass it on
+                    }
+                    if (isDown)
+                    {
+                        var hit = Match(vk, Modifiers(), PadKey, LeaveKey, OverlayKey);
+                        if (hit != Hotkey.None)
                         {
-                            toggleHeld = true;
-                            if (Held(Keys.LControlKey) || Held(Keys.RControlKey)) LeaveRequested?.Invoke();
-                            else if (Held(Keys.LShiftKey) || Held(Keys.RShiftKey)) OverlayToggleRequested?.Invoke();
+                            hotkeyHeldVk = vk;
+                            if (hit == Hotkey.Leave) LeaveRequested?.Invoke();
+                            else if (hit == Hotkey.Overlay) OverlayToggleRequested?.Invoke();
                             else PadMode = !PadMode;
+                            return (IntPtr)1;
                         }
-                        else if (isUp)
-                        {
-                            toggleHeld = false;
-                        }
-                        return (IntPtr)1; // never pass the toggle key on
                     }
 
                     if (padMode)
@@ -165,6 +182,15 @@ namespace LanPad.Join
         // In Pad mode this hook blocks every key, so Windows' own key state may not see a held Ctrl / Shift:
         // check what the hook recorded too.
         bool Held(Keys k) => IsDown(k) || IsPhysicallyDown(k);
+
+        Keys Modifiers()
+        {
+            Keys m = Keys.None;
+            if (Held(Keys.LControlKey) || Held(Keys.RControlKey)) m |= Keys.Control;
+            if (Held(Keys.LShiftKey) || Held(Keys.RShiftKey)) m |= Keys.Shift;
+            if (Held(Keys.LMenu) || Held(Keys.RMenu)) m |= Keys.Alt;
+            return m;
+        }
 
         public void Dispose()
         {

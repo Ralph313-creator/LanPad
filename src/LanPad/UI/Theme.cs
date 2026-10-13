@@ -281,6 +281,7 @@ namespace LanPad.UI
         static readonly Font WaitFont = Theme.Font(9f, FontStyle.Italic);
         bool capturing, hover;
         Keys swallowUp = Keys.None;
+        bool swallowAltUp;
         Keys[] keys = new Keys[0];
 
         public KeyButton()
@@ -305,6 +306,15 @@ namespace LanPad.UI
         public event Action<KeyButton> Cleared;
 
         public bool Capturing => capturing;
+
+        /// <summary>
+        /// Hotkey mode: Ctrl / Shift / Alt alone do not count - it waits for the next key and keeps the held
+        /// modifiers with it (Keys.Control | Keys.F12), shown as "Ctrl+F12".
+        /// </summary>
+        public bool HotkeyMode { get; set; }
+
+        static bool IsModifierKey(Keys k) =>
+            k == Keys.ShiftKey || k == Keys.ControlKey || k == Keys.Menu || k == Keys.LWin || k == Keys.RWin;
 
         public void Cancel()
         {
@@ -356,11 +366,17 @@ namespace LanPad.UI
         {
             if (!capturing) { base.OnKeyDown(e); return; }
             e.Handled = e.SuppressKeyPress = true;
+            if (HotkeyMode && IsModifierKey(e.KeyCode))
+            {
+                swallowUp = e.KeyCode; // keep waiting for the real key; Alt's release must not open the window menu
+                return;
+            }
             capturing = false;
             swallowUp = e.KeyCode; // so its key-up does not click the button (Space) or open the window menu (Alt, F10)
+            swallowAltUp = e.Alt;  // releasing Alt after Alt+key would open the window menu too
             Invalidate();
             if (e.KeyCode == Keys.Escape) return;
-            KeyChosen?.Invoke(this, Resolve(e.KeyCode));
+            KeyChosen?.Invoke(this, HotkeyMode ? e.KeyCode | e.Modifiers : Resolve(e.KeyCode));
         }
 
         protected override void OnKeyUp(KeyEventArgs e)
@@ -379,6 +395,11 @@ namespace LanPad.UI
             if (m.Msg == WM_SYSKEYUP && swallowUp != Keys.None)
             {
                 swallowUp = Keys.None;
+                return;
+            }
+            if (m.Msg == WM_SYSKEYUP && swallowAltUp && (Keys)(int)m.WParam == Keys.Menu)
+            {
+                swallowAltUp = false;
                 return;
             }
             base.WndProc(ref m);
@@ -426,7 +447,8 @@ namespace LanPad.UI
                 using (var edge = new Pen(Theme.Blend(Theme.Border, Theme.Back, 0.3f), 2f * s))
                     g.DrawLine(edge, 6 * s, Height - 1.5f * s, Width - 6 * s, Height - 1.5f * s);
 
-            string text = capturing ? "Press a key..." : keys.Length == 0 ? "—" : KeyMap.DisplayText(keys);
+            string text = capturing ? "Press a key..." : keys.Length == 0 ? "—"
+                        : HotkeyMode ? KeyMap.HotkeyText(keys[0]) : KeyMap.DisplayText(keys);
             Color fg = capturing ? Theme.Accent : keys.Length == 0 ? Theme.Muted : Theme.Text;
             TextRenderer.DrawText(g, text, capturing ? WaitFont : Font, ClientRectangle, fg,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
