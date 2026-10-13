@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "dotnet build src/LanPad/LanPad.csproj -c Release",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "selftest",
+      "type": "shell",
+      "command": "Start-Process -Wait -FilePath src/LanPad/bin/Release/LanPad.exe -ArgumentList '--selftest'; Get-Content src/LanPad/bin/Release/selftest.log",
+      "dependsOn": "build",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "run (menu)",
+      "type": "shell",
+      "command": "Start-Process src/LanPad/bin/Release/LanPad.exe",
+      "dependsOn": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "run host",
+      "type": "shell",
+      "command": "Start-Process src/LanPad/bin/Release/LanPad.exe -ArgumentList '--host'",
+      "dependsOn": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "run join (this PC)",
+      "type": "shell",
+      "command": "Start-Process src/LanPad/bin/Release/LanPad.exe -ArgumentList '--join','127.0.0.1'",
+      "dependsOn": "build",
+      "problemMatcher": []
+    }
+  ]
+}

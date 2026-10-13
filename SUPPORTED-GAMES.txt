@@ -1,0 +1,126 @@
+LANPAD - GAMES YOU CAN PLAY ON DIFFERENT PCs OVER LAN (even if not on your drive yet)
+Sorted: BEST game -> not too best          (101 games + 4 emulators)
+
+Rule: any PC game where 2+ players can play on ONE PC with Xbox controllers
+(same screen or split-screen) works with LanPad. Players = max at the same time
+(host keyboard + joined PCs; LanPad allows max 4 joined PCs = 5 players).
+*  = heavy for Ryzen 5 5600G (use Low settings / 720p)
+ON YOUR PC = already in G:\Offline Games
+
+  #   GAME                                                     PLAYERS  TYPE
+ ---  -------------------------------------------------------  -------  -----------
+   1. It Takes Two                                              2       Co-op  *
+   2. Portal 2                                                  2       Co-op
+   3. Stardew Valley                                            4       Co-op
+   4. Rocket League                                             4       Sports
+   5. Cuphead                                                   2       Co-op
+   6. Overcooked! 2                                             4       Party
+   7. Street Fighter 6                                          2       Fighting  *
+   8. Tekken 8                                                  2       Fighting  *
+   9. Split Fiction                                             2       Co-op  *
+  10. A Way Out                                                 2       Co-op  *
+  11. Tekken 7                                                  2       Fighting
+  12. NBA 2K14                                                  5       Sports  <- ON YOUR PC
+  13. Mortal Kombat 11                                          2       Fighting  *
+  14. Mortal Kombat 9 (Komplete Edition)                        2       Fighting  <- ON YOUR PC
+  15. Dragon Ball FighterZ                                      2       Fighting
+  16. Guilty Gear Strive                                        2       Fighting
+  17. Streets of Rage 4                                         4       Beat 'em up
+  18. TMNT: Shredder's Revenge                                  5       Beat 'em up
+  19. Castle Crashers                                           4       Beat 'em up
+  20. Rayman Legends                                            4       Platformer
+  21. Street Fighter V                                          2       Fighting
+  22. Injustice 2                                               2       Fighting
+  23. Mortal Kombat X                                           2       Fighting
+  24. Mortal Kombat 1                                           2       Fighting  *
+  25. Soulcalibur VI                                            2       Fighting
+  26. Dragon Ball Sparking! Zero                                2       Fighting  *
+  27. Dragon Ball Xenoverse 2                                   2       Fighting
+  28. Naruto Shippuden: Ultimate Ninja Storm 4                  2       Fighting
+  29. One Piece Burning Blood                                   2       Fighting  <- ON YOUR PC
+  30. One Piece Pirate Warriors 4                               2       Co-op
+  31. Ultimate Marvel vs. Capcom 3                              2       Fighting
+  32. Marvel vs. Capcom Fighting Collection                     2       Fighting
+  33. Street Fighter 30th Anniversary Collection                2       Fighting
+  34. The King of Fighters XV                                   2       Fighting
+  35. The King of Fighters 2002 Unlimited Match                 2       Fighting
+  36. BlazBlue: Cross Tag Battle                                4       Fighting
+  37. Brawlhalla                                                5       Fighting
+  38. Injustice: Gods Among Us                                  2       Fighting
+  39. Dead or Alive 6                                           2       Fighting
+  40. Jump Force                                                2       Fighting
+  41. My Hero One's Justice 2                                   2       Fighting
+  42. Granblue Fantasy Versus: Rising                           2       Fighting
+  43. Nickelodeon All-Star Brawl 2                              4       Fighting
+  44. Power Rangers: Battle for the Grid                        2       Fighting
+  45. FIFA 22 / FIFA 23                                         4       Sports
+  46. EA Sports FC 24 / FC 25 / FC 26                           4       Sports  *
+  47. PES 2021                                                  4       Sports
+  48. NBA 2K15 - NBA 2K24                                       5       Sports
+  49. NBA 2K25                                                  5       Sports  *
+  50. WWE 2K22 - WWE 2K25                                       4       Sports  *
+  51. Lethal League Blaze                                       4       Sports
+  52. Sonic & All-Stars Racing Transformed                      4       Racing
+  53. Team Sonic Racing                                         4       Racing
+  54. DiRT 5                                                    4       Racing  *
+  55. F1 2021 / F1 22 / F1 23                                   2       Racing  *
+  56. Hot Wheels Unleashed 2                                    2       Racing  *
+  57. LEGO Star Wars: The Skywalker Saga                        2       Co-op  *
+  58. LEGO Marvel Super Heroes 2                                2       Co-op
+  59. LEGO Batman 3 / LEGO DC Super-Villains                    2       Co-op
+  60. LEGO Harry Potter Collection                              2       Co-op
+  61. LEGO Jurassic World                                       2       Co-op
+  62. LEGO Star Wars: The Complete Saga                         2       Co-op
+  63. Rayman Origins                                            4       Platformer
+  64. Trine 4 / Trine 5                                         4       Co-op
+  65. Unravel Two                                               2       Co-op
+  66. Human: Fall Flat                                          2       Party
+  67. Moving Out 2                                              4       Party
+  68. Overcooked! All You Can Eat                               4       Party
+  69. PlateUp!                                                  4       Party
+  70. Cult of the Lamb                                          2       Co-op
+  71. Minecraft Dungeons                                        4       Co-op
+  72. Sackboy: A Big Adventure                                  4       Platformer  *
+  73. Crash Bandicoot 4: It's About Time                        2       Platformer
+  74. Sonic Mania                                               2       Platformer
+  75. Spelunky 2                                                4       Platformer
+  76. Enter the Gungeon                                         2       Co-op
+  77. Broforce                                                  4       Co-op
+  78. Children of Morta                                         2       Co-op
+  79. Lovers in a Dangerous Spacetime                           4       Party
+  80. The Escapists 2                                           4       Co-op
+  81. Lara Croft and the Temple of Osiris                       4       Co-op
+  82. Resident Evil 6                                           2       Co-op
+  83. Resident Evil Revelations 2                               2       Co-op
+  84. Gang Beasts                                               4       Party
+  85. Ultimate Chicken Horse                                    4       Party
+  86. Stick Fight: The Game                                     4       Party
+  87. Duck Game                                                 4       Party
+  88. TowerFall Ascension                                       4       Party
+  89. Pico Park                                                 5       Party
+  90. Heave Ho                                                  4       Party
+  91. Unrailed!                                                 4       Party
+  92. Pummel Party                                              4       Party
+  93. Boomerang Fu                                              4       Party
+  94. Nidhogg 2                                                 2       Fighting
+  95. Super Bomberman R                                         4       Party
+  96. Metal Slug 3 / Metal Slug X                               2       Shooter
+  97. Double Dragon Neon                                        2       Beat 'em up
+  98. TMNT: The Cowabunga Collection                            4       Beat 'em up
+  99. Capcom Beat 'Em Up Bundle                                 4       Beat 'em up
+ 100. KeyWe                                                     2       Co-op
+ 101. Biped                                                     2       Co-op
+ 102. PCSX2 emulator (PS2) - any 2-4 player game                4       Emulator
+ 103. DuckStation emulator (PS1) - any 2 player game            2       Emulator
+ 104. Dolphin emulator (GameCube/Wii) - any 2-4 player game     4       Emulator
+ 105. RetroArch (retro consoles/arcade) - any 2-4 player game   4       Emulator
+
+WILL NOT WORK (single-player, or every player needs a mouse):
+ BioShock 2, DmC, Little Nightmares 1/2, Prototype 2, Sleeping Dogs, PvZ Fusion,
+ Sniper Elite 3, Diablo II Resurrected (couch co-op is console-only)
+NOT NEEDED (already have their own LAN/online multiplayer):
+ Counter-Strike, Left 4 Dead 2, GTA V Rage COOP, StarCraft 2, Warcraft III,
+ Dota 2, Valorant, League of Legends, Roblox, Minecraft, Terraria
+
+Tips: set the game to windowed/borderless 1920x1080 on the host.
+      In the game's controller/versus screen, each joined PC = one Xbox controller.

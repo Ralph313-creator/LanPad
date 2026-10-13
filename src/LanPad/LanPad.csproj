@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>LanPad</AssemblyName>
+    <RootNamespace>LanPad</RootNamespace>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.2.0</Version>
+    <Product>LanPad</Product>
+    <Description>LAN keyboard-to-controller and screen stream for local multiplayer games</Description>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\lanpad.ini" Link="lanpad.ini" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\games.ini" Link="games.ini" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\third_party\ffmpeg.exe" Link="tools\ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\third_party\ffmpeg.exe')" />
+    <None Include="..\..\third_party\ffplay.exe" Link="tools\ffplay.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\third_party\ffplay.exe')" />
+    <None Include="..\..\third_party\mpv\**\*" Link="tools\mpv\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\third_party\mpv')" />
+  </ItemGroup>
+
+</Project>

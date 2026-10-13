@@ -1,0 +1,7 @@
+bin/
+obj/
+dist/
+third_party/
+*.user
+.vs/
+selftest.log
