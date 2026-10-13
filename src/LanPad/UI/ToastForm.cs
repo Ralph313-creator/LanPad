@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace LanPad.UI
@@ -8,6 +9,7 @@ namespace LanPad.UI
     public sealed class ToastForm : Form
     {
         readonly Label label;
+        readonly Panel stripe;
         readonly Timer hideTimer;
 
         public ToastForm()
@@ -16,9 +18,9 @@ namespace LanPad.UI
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
-            BackColor = Color.FromArgb(20, 20, 20);
-            Opacity = 0.92;
-            Padding = new Padding(18, 10, 18, 10);
+            BackColor = Color.FromArgb(22, 24, 31);
+            Opacity = 0.94;
+            Padding = new Padding(0, 12, 22, 12);
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
@@ -28,8 +30,11 @@ namespace LanPad.UI
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI", 16f, FontStyle.Bold),
                 Dock = DockStyle.Fill,
+                Padding = new Padding(18, 0, 0, 0),
             };
+            stripe = new Panel { Dock = DockStyle.Left, Width = 6 };
             Controls.Add(label);
+            Controls.Add(stripe);
 
             hideTimer = new Timer { Interval = 2500 };
             hideTimer.Tick += (s, e) => { hideTimer.Stop(); Hide(); };
@@ -48,10 +53,23 @@ namespace LanPad.UI
             }
         }
 
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            // rounded corners
+            using (GraphicsPath path = Theme.RoundRect(new RectangleF(0, 0, Width, Height), 12 * DeviceDpi / 96f))
+            {
+                var old = Region;
+                Region = new Region(path);
+                old?.Dispose();
+            }
+        }
+
         public void ShowMessage(string text, Color accent, int ms = 2500)
         {
             label.Text = text;
             label.ForeColor = accent;
+            stripe.BackColor = accent;
             var screen = Screen.PrimaryScreen.Bounds;
             if (!Visible) Show();
             PerformLayout();

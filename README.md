@@ -100,6 +100,7 @@ Self-test: `LanPad.exe --selftest` (writes `selftest.log`). Stream delay test: `
 
 Open the folder in **VS Code** and press **Ctrl+Shift+B** (needs the .NET 8 SDK), or:
 `powershell -File scripts\package.ps1` → ready package in `dist\LanPad`.
+The app icon `src\LanPad\LanPad.ico` is drawn by `scripts\make-icon.ps1` (run it again after changing the design).
 Third-party tools (downloaded from official sources, checksums verified): FFmpeg 9.0.2 (gyan.dev),
 mpv 2026-10-13 (shinchiro build), ViGEmBus 1.22.0 (signed by Nefarius Software Solutions).
 

@@ -21,9 +21,8 @@ namespace LanPad.UI
     {
         public enum StartMode { Menu, Host, Join }
 
-        static readonly Color Accent = Color.FromArgb(0, 120, 215);
-        static readonly Color Good = Color.FromArgb(16, 124, 16);
-        static readonly Color Bad = Color.FromArgb(196, 43, 28);
+        /// <summary>Marks a control whose width follows its column (lists, cards; wrap width for labels).</summary>
+        static readonly object Fill = new object();
 
         readonly LanPadConfig cfg;
         readonly List<string> warnings;
@@ -41,11 +40,12 @@ namespace LanPad.UI
         bool streamBusy;
         DateTime streamRetryAfter = DateTime.MinValue;
         string streamStatus = "Stream: waiting for players";
-        Label hostTitle, pinLabel, padsLabel, streamLabel;
-        ListView playerList;
+        Label hostTitle, pinLabel;
+        DotLabel padsLabel, streamLabel;
+        DarkListView playerList;
         List<GameProfile> games = new List<GameProfile>();
         GameProfile currentGame;
-        ComboBox gameBox;
+        DarkComboBox gameBox;
         Label gameNotes, gameInfo;
         bool suppressGameChange;
 
@@ -55,8 +55,9 @@ namespace LanPad.UI
         JoinClient client;
         Viewer viewer;
         TextBox nameBox, pinBox, ipBox, keysText;
-        ListView hostList;
-        Label joinedTitle, padModeLabel;
+        DarkListView hostList;
+        Label joinedTitle;
+        Pill padModeLabel;
         volatile KeyMap activeKeyMap;
 
         readonly string startPin;
@@ -70,9 +71,14 @@ namespace LanPad.UI
             this.startPin = startPin;
 
             Text = "LanPad - LAN controllers for local multiplayer";
-            Font = new Font("Segoe UI", 10f);
-            ClientSize = new Size(760, 560);
-            MinimumSize = new Size(680, 520);
+            Icon = Theme.AppIcon;
+            AutoScaleDimensions = new SizeF(96f, 96f);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            Font = Theme.Font(10f);
+            BackColor = Theme.Back;
+            ForeColor = Theme.Text;
+            ClientSize = new Size(820, 680);
+            MinimumSize = new Size(800, 640);
             StartPosition = FormStartPosition.CenterScreen;
 
             BuildMenuPage();
@@ -84,6 +90,12 @@ namespace LanPad.UI
             refreshTimer = new Timer { Interval = 500 };
             refreshTimer.Tick += (s, e) => RefreshUi();
             refreshTimer.Start();
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Theme.DarkTitleBar(Handle);
         }
 
         protected override void OnShown(EventArgs e)
@@ -113,7 +125,7 @@ namespace LanPad.UI
 
         Panel NewPage()
         {
-            var p = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20), Visible = false };
+            var p = new Panel { Dock = DockStyle.Fill, Padding = new Padding(28, 22, 28, 16), Visible = false };
             Controls.Add(p);
             return p;
         }
@@ -123,19 +135,65 @@ namespace LanPad.UI
             {
                 Text = text,
                 AutoSize = true,
-                Font = new Font("Segoe UI", size, style),
-                ForeColor = color ?? SystemColors.ControlText,
+                Font = Theme.Font(size, style),
+                ForeColor = color ?? Theme.Text,
                 Margin = new Padding(0, 4, 0, 4),
-                MaximumSize = new Size(700, 0),
+                MaximumSize = new Size(740, 0),
             };
 
-        static Button NewButton(string text, EventHandler onClick, int width = 150, int height = 36)
+        /// <summary>Label that wraps to the full width of its column.</summary>
+        static Label Para(string text, float size = 9.5f, Color? color = null)
         {
-            var b = new Button { Text = text, Size = new Size(width, height), Margin = new Padding(0, 6, 10, 6) };
+            var l = NewLabel(text, size, FontStyle.Regular, color ?? Theme.Muted);
+            l.Tag = Fill;
+            return l;
+        }
+
+        /// <summary>Small upper-case heading above a part of the page.</summary>
+        static Label Section(string text, int top = 14) =>
+            new Label
+            {
+                Text = text.ToUpperInvariant(),
+                AutoSize = true,
+                Font = Theme.Font(8.5f, FontStyle.Bold),
+                ForeColor = Theme.Muted,
+                Margin = new Padding(0, top, 0, 6),
+            };
+
+        static FlatButton NewButton(string text, EventHandler onClick, ButtonKind kind = ButtonKind.Secondary, int width = 150, int height = 38)
+        {
+            var b = new FlatButton(text, kind) { Size = new Size(width, height), Margin = new Padding(0, 6, 10, 6) };
             b.Click += onClick;
             return b;
         }
 
+        static TextBox NewInput(int width, int maxLength = 0)
+        {
+            var t = new TextBox
+            {
+                Width = width,
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = Theme.SurfaceHi,
+                ForeColor = Theme.Text,
+                Font = Theme.Font(11f),
+                Margin = new Padding(0, 2, 16, 4),
+            };
+            if (maxLength > 0) t.MaxLength = maxLength;
+            return t;
+        }
+
+        /// <summary>Caption above an input.</summary>
+        static FlowLayoutPanel Field(string caption, Control input) =>
+            Stack(new Label
+            {
+                Text = caption.ToUpperInvariant(),
+                AutoSize = true,
+                Font = Theme.Font(8f, FontStyle.Bold),
+                ForeColor = Theme.Muted,
+                Margin = new Padding(0, 0, 0, 3),
+            }, input);
+
+        /// <summary>Page column; children tagged <see cref="Fill"/> follow its width.</summary>
         static FlowLayoutPanel Column(Panel parent)
         {
             var f = new FlowLayoutPanel
@@ -145,8 +203,22 @@ namespace LanPad.UI
                 WrapContents = false,
                 AutoScroll = true,
             };
+            f.Layout += (s, e) => FitToWidth(f);
+            Theme.DarkScrollBars(f);
             parent.Controls.Add(f);
             return f;
+        }
+
+        static void FitToWidth(FlowLayoutPanel f)
+        {
+            int width = f.ClientSize.Width - f.Padding.Horizontal;
+            foreach (Control c in f.Controls)
+            {
+                if (c.Tag != Fill) continue;
+                int w = Math.Max(100, width - c.Margin.Horizontal);
+                if (c is Label) { if (c.MaximumSize.Width != w) c.MaximumSize = new Size(w, 0); }
+                else if (c.Width != w) c.Width = w;
+            }
         }
 
         static FlowLayoutPanel Row(params Control[] controls)
@@ -156,23 +228,88 @@ namespace LanPad.UI
             return f;
         }
 
+        static FlowLayoutPanel Stack(params Control[] controls)
+        {
+            var f = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0) };
+            f.Controls.AddRange(controls);
+            return f;
+        }
+
+        /// <summary>Logo + title + line under it, at the top of a page.</summary>
+        static Control PageHeader(Label title, Label subtitle)
+        {
+            var logo = new LogoBox(52) { Margin = new Padding(0, 0, 14, 0) };
+            title.Margin = new Padding(0, 0, 0, 0);
+            subtitle.Margin = new Padding(1, 0, 0, 0);
+            var row = Row(logo, Stack(title, subtitle));
+            row.Margin = new Padding(0, 0, 0, 10);
+            return row;
+        }
+
+        /// <summary>Rounded card holding a column of controls; labels in it wrap to its width.</summary>
+        static CardPanel Card(params Control[] controls)
+        {
+            var card = new CardPanel { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 12, 0) };
+            var inner = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+            inner.Controls.AddRange(controls);
+            inner.Layout += (s, e) =>
+            {
+                int w = Math.Max(80, inner.ClientSize.Width);
+                foreach (Control c in inner.Controls)
+                    if (c is Label && c.MaximumSize.Width != w) c.MaximumSize = new Size(w, 0);
+            };
+            card.Controls.Add(inner);
+            return card;
+        }
+
         // ---------------------------------------------------------------- menu page
 
         void BuildMenuPage()
         {
             menuPage = NewPage();
             var col = Column(menuPage);
-            col.Controls.Add(NewLabel("LanPad", 26f, FontStyle.Bold, Accent));
-            col.Controls.Add(NewLabel("Play local-multiplayer games (like NBA 2K14) together on different PCs over LAN.\n" +
-                                      "The host PC runs the game. Every other PC's keyboard becomes an Xbox controller on the host,\n" +
-                                      "and the host's screen is shown on every joined PC."));
-            var host = NewButton("HOST GAME\nthis PC runs the game", (s, e) => StartHost(), 300, 90);
-            var join = NewButton("JOIN GAME\nplay on another PC's game", (s, e) => OpenJoin(null), 300, 90);
-            host.Font = join.Font = new Font("Segoe UI", 12f, FontStyle.Bold);
+
+            var logo = new LogoBox(84) { Margin = new Padding(0, 4, 18, 0) };
+            var title = NewLabel("LanPad", 30f, FontStyle.Bold);
+            title.Margin = new Padding(0, 0, 0, 0);
+            string version = Application.ProductVersion.Split('+')[0];
+            var tagline = NewLabel($"Local multiplayer over LAN   ·   v{version}", 11f, FontStyle.Regular, Theme.Muted);
+            tagline.Margin = new Padding(3, 0, 0, 0);
+            var hero = Row(logo, Stack(title, tagline));
+            hero.Margin = new Padding(0, 6, 0, 14);
+            col.Controls.Add(hero);
+
+            col.Controls.Add(Para("Play local-multiplayer games (like NBA 2K14) together on different PCs. The host PC runs the game, " +
+                                  "every other PC's keyboard becomes an Xbox controller on the host, and the host's screen is " +
+                                  "streamed to every joined PC.", 10.5f));
+
+            var host = new CardButton("Host game", "This PC runs the game. Players join with the room PIN.",
+                Theme.Glyph.Screen, Theme.Accent) { Size = new Size(356, 196), Margin = new Padding(0, 18, 14, 8) };
+            var join = new CardButton("Join game", "Play on another PC's game. Your keyboard becomes a controller.",
+                Theme.Glyph.Gamepad, Theme.Violet) { Size = new Size(356, 196), Margin = new Padding(0, 18, 0, 8) };
+            host.Click += (s, e) => StartHost();
+            join.Click += (s, e) => OpenJoin(null);
             col.Controls.Add(Row(host, join));
+            col.Layout += (s, e) =>
+            {
+                int w = (col.ClientSize.Width - col.Padding.Horizontal - host.Margin.Right) / 2;
+                if (w > 200 && host.Width != w) host.Width = join.Width = w;
+            };
+
+            col.Controls.Add(Section("How it works", 18));
+            col.Controls.Add(Para("1.  Host: HOST GAME, pick the game, Launch game, tell players the room PIN.\n" +
+                                  "2.  Players: JOIN GAME, type the PIN, double-click the host.\n" +
+                                  "3.  In the game each joined PC is one Xbox controller. F12 = Pad mode on/off, Ctrl+F12 = leave.",
+                                  10f, Theme.Text));
+
             if (warnings.Count > 0)
-                col.Controls.Add(NewLabel("Settings warnings (lanpad.ini):\n- " + string.Join("\n- ", warnings), 9f, FontStyle.Regular, Bad));
-            col.Controls.Add(NewLabel($"Settings: {AppPaths.ConfigFile}\nLog: {Log.FilePath}", 8.5f, FontStyle.Regular, Color.Gray));
+            {
+                col.Controls.Add(Section("Settings warnings (lanpad.ini)", 18));
+                col.Controls.Add(Para("- " + string.Join("\n- ", warnings), 9.5f, Theme.Bad));
+            }
+            var paths = Para($"Settings: {AppPaths.ConfigFile}\nLog: {Log.FilePath}", 8.5f, Theme.Blend(Theme.Muted, Theme.Back, 0.25f));
+            paths.Margin = new Padding(0, 18, 0, 0);
+            col.Controls.Add(paths);
         }
 
         // ---------------------------------------------------------------- host
@@ -181,56 +318,68 @@ namespace LanPad.UI
         {
             hostPage = NewPage();
             var col = Column(hostPage);
-            hostTitle = NewLabel("", 14f, FontStyle.Bold, Accent);
-            pinLabel = NewLabel("", 26f, FontStyle.Bold);
-            padsLabel = NewLabel("");
-            streamLabel = NewLabel("");
-            playerList = new ListView
-            {
-                View = View.Details,
-                FullRowSelect = true,
-                MultiSelect = false,
-                HideSelection = false,
-                Size = new Size(700, 170),
-                Margin = new Padding(0, 6, 0, 6),
-            };
-            playerList.Columns.Add("Controller", 90);
-            playerList.Columns.Add("Player", 200);
-            playerList.Columns.Add("PC address", 150);
-            playerList.Columns.Add("Status", 200);
+            hostTitle = NewLabel("", 10.5f, FontStyle.Regular, Theme.Muted);
+            col.Controls.Add(PageHeader(NewLabel("Hosting", 18f, FontStyle.Bold), hostTitle));
 
-            gameBox = new ComboBox
+            // room PIN + controllers / stream status side by side
+            var pinCaption = NewLabel("ROOM PIN", 8.5f, FontStyle.Bold, Theme.Muted);
+            pinCaption.Margin = new Padding(0, 0, 0, 0);
+            pinLabel = NewLabel("", 30f, FontStyle.Bold);
+            pinLabel.Margin = new Padding(0, 0, 0, 0);
+            var pinHint = NewLabel("tell the players", 9f, FontStyle.Regular, Theme.Muted);
+            pinHint.Margin = new Padding(0);
+            padsLabel = new DotLabel { Font = Theme.Font(10f), ForeColor = Theme.Text, Margin = new Padding(0, 6, 0, 8) };
+            streamLabel = new DotLabel { Font = Theme.Font(10f), ForeColor = Theme.Text, Margin = new Padding(0, 0, 0, 4) };
+            var statusCaption = NewLabel("STATUS", 8.5f, FontStyle.Bold, Theme.Muted);
+            statusCaption.Margin = new Padding(0);
+            var cards = new TableLayoutPanel { ColumnCount = 2, RowCount = 1, Height = 124, Margin = new Padding(0, 0, 0, 4), Tag = Fill };
+            cards.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 196));
+            cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            cards.Controls.Add(Card(pinCaption, pinLabel, pinHint), 0, 0);
+            var status = Card(statusCaption, padsLabel, streamLabel);
+            status.Margin = new Padding(0);
+            cards.Controls.Add(status, 1, 0);
+            col.Controls.Add(cards);
+
+            gameBox = new DarkComboBox
             {
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Width = 430,
-                MaxDropDownItems = 25,
-                Margin = new Padding(0, 6, 10, 6),
+                Width = 420,
+                MaxDropDownItems = 20,
+                Margin = new Padding(0, 7, 10, 6),
             };
             gameBox.SelectedIndexChanged += (s, e) =>
             {
                 if (!suppressGameChange && gameBox.SelectedItem is GameProfile g) ApplyGame(g, true);
             };
-            gameNotes = NewLabel("", 9.5f, FontStyle.Regular, Color.FromArgb(60, 60, 60));
-            gameInfo = NewLabel("", 9f, FontStyle.Regular, Color.DimGray);
+            gameNotes = Para("", 10f, Theme.Text);
+            gameInfo = Para("", 9f);
 
-            col.Controls.Add(hostTitle);
-            col.Controls.Add(pinLabel);
-            col.Controls.Add(Row(NewLabel("Game:", 11f, FontStyle.Bold), gameBox,
-                NewButton("Browse exe...", (s, e) => BrowseGame(), 110, 30),
-                NewButton("Launch game", (s, e) => LaunchGame(), 110, 30)));
+            col.Controls.Add(Section("Game"));
+            col.Controls.Add(Row(gameBox,
+                NewButton("Browse exe...", (s, e) => BrowseGame(), ButtonKind.Secondary, 126),
+                NewButton("Launch game", (s, e) => LaunchGame(), ButtonKind.Primary, 136)));
             col.Controls.Add(gameNotes);
             col.Controls.Add(gameInfo);
-            col.Controls.Add(padsLabel);
-            col.Controls.Add(streamLabel);
-            col.Controls.Add(NewLabel("Joined players:", 10f, FontStyle.Bold));
+
+            playerList = new DarkListView
+            {
+                Height = 132,
+                Margin = new Padding(0, 0, 0, 4),
+                Tag = Fill,
+                EmptyText = "No players yet - they click JOIN GAME on their PC and type the room PIN.",
+            };
+            playerList.Columns.Add("Controller", 110);
+            playerList.Columns.Add("Player", 220);
+            playerList.Columns.Add("PC address", 160);
+            playerList.Columns.Add("Status", 160);
+            col.Controls.Add(Section("Joined players"));
             col.Controls.Add(playerList);
             col.Controls.Add(Row(
                 NewButton("Kick selected", (s, e) => KickSelected()),
-                NewButton("Stop hosting", (s, e) => StopHost(true))));
-            col.Controls.Add(NewLabel(
-                "Tips: tell players the room PIN. Set the game to windowed / borderless 1920x1080 so the stream works.\n" +
-                "Each joined player is one Xbox controller in the game; you (host) use this keyboard. \u2714 = found on this PC.",
-                9f, FontStyle.Regular, Color.DimGray));
+                NewButton("Stop hosting", (s, e) => StopHost(true), ButtonKind.Danger)));
+            col.Controls.Add(Para(
+                "Tip: set the game to windowed / borderless 1920x1080 so the stream works. Each joined player is one Xbox " +
+                "controller in the game; you (host) use this keyboard. \u2714 = game found on this PC.", 9f));
         }
 
         void LoadGames()
@@ -274,10 +423,11 @@ namespace LanPad.UI
             server?.SetGame(g.Name, keys.ToBytes(), maxRemote);
 
             gameNotes.Text = string.IsNullOrWhiteSpace(g.Notes) ? DefaultNotes(g.Layout) : g.Notes;
-            gameInfo.Text = $"Controls sent to joined PCs: {g.Layout} layout   |   up to {maxRemote} PC(s) can join   |   " +
+            gameInfo.Text = $"{g.Layout} controls for joined PCs   ·   up to {maxRemote} PC(s) can join   ·   " +
                             (g.Installed ? "found: " + g.Exe : "not found on this PC - use Browse exe...");
+            gameInfo.ForeColor = g.Installed ? Theme.Muted : Theme.Warn;
             if (pads != null)
-                padsLabel.Text = $"Controllers: {pads.Capacity} virtual Xbox 360 controllers ready (up to {maxRemote} players can join this game)";
+                padsLabel.Text = $"{pads.Capacity} virtual Xbox 360 controllers ready  ·  up to {maxRemote} players can join this game";
 
             if (remember)
             {
@@ -359,10 +509,10 @@ namespace LanPad.UI
             server.PlayersChanged += () => BeginInvoke((Action)RefreshUi);
             broadcaster = new StreamBroadcaster(cfg);
 
-            hostTitle.Text = $"HOSTING on {cfg.EffectiveHostName}  -  IP {lan}";
-            pinLabel.Text = pin.Length > 0 ? $"ROOM PIN:  {pin}" : "ROOM PIN:  off";
-            padsLabel.Text = $"Controllers: {pads.Capacity} virtual Xbox 360 controllers ready (up to {server.MaxPlayers} players can join)";
-            padsLabel.ForeColor = Good;
+            hostTitle.Text = $"on {cfg.EffectiveHostName}   ·   IP {lan}";
+            pinLabel.Text = pin.Length > 0 ? pin : "off";
+            padsLabel.Text = $"{pads.Capacity} virtual Xbox 360 controllers ready  ·  up to {server.MaxPlayers} players can join";
+            padsLabel.DotColor = Theme.Good;
             LoadGames();
             streamStatus = StreamBroadcaster.FindFfmpeg() == null
                 ? "Stream: ffmpeg.exe missing in tools folder - players will not see the screen"
@@ -470,64 +620,82 @@ namespace LanPad.UI
         {
             joinListPage = NewPage();
             var col = Column(joinListPage);
-            col.Controls.Add(NewLabel("JOIN A GAME", 14f, FontStyle.Bold, Accent));
-            nameBox = new TextBox { Width = 220, Text = cfg.EffectivePlayerName };
-            pinBox = new TextBox { Width = 80, MaxLength = 4 };
-            col.Controls.Add(Row(NewLabel("Your name:"), nameBox, NewLabel("   Room PIN:"), pinBox));
+            col.Controls.Add(PageHeader(NewLabel("Join a game", 18f, FontStyle.Bold),
+                NewLabel("Type the room PIN, then double-click the host.", 10.5f, FontStyle.Regular, Theme.Muted)));
 
-            hostList = new ListView
+            nameBox = NewInput(220);
+            nameBox.Text = cfg.EffectivePlayerName;
+            pinBox = NewInput(90, 4);
+            ipBox = NewInput(160);
+            ipBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; JoinTyped(); } };
+            var joinIp = NewButton("Join IP", (s, e) => JoinTyped(), ButtonKind.Secondary, 96, ipBox.Height + 2);
+            joinIp.Margin = new Padding(0, 1, 0, 0);
+            var fields = Row(Field("Your name", nameBox), Field("Room PIN", pinBox), Field("Or host IP", Row(ipBox, joinIp)));
+            fields.Margin = new Padding(0, 0, 0, 0);
+            var card = Card(fields);
+            card.Dock = DockStyle.None;
+            card.Height = 78;
+            card.Margin = new Padding(0, 0, 0, 4);
+            card.Tag = Fill;
+            col.Controls.Add(card);
+
+            hostList = new DarkListView
             {
-                View = View.Details,
-                FullRowSelect = true,
-                MultiSelect = false,
-                HideSelection = false,
-                Size = new Size(700, 200),
-                Margin = new Padding(0, 6, 0, 6),
+                Height = 290,
+                Margin = new Padding(0, 0, 0, 4),
+                Tag = Fill,
+                EmptyText = "Looking for hosts on the LAN...\nThe host clicks HOST GAME on their PC. Not showing up? Type the host's IP above.",
             };
-            hostList.Columns.Add("Host PC", 180);
-            hostList.Columns.Add("Game", 170);
-            hostList.Columns.Add("Free controllers", 120);
-            hostList.Columns.Add("PIN", 60);
-            hostList.Columns.Add("Address", 140);
+            hostList.Columns.Add("Host PC", 170);
+            hostList.Columns.Add("Game", 190);
+            hostList.Columns.Add("Free pads", 100);
+            hostList.Columns.Add("PIN", 70);
+            hostList.Columns.Add("Address", 130);
             hostList.DoubleClick += (s, e) => JoinSelected();
-            col.Controls.Add(NewLabel("Hosts found on the LAN (double-click to join):", 10f, FontStyle.Bold));
+            hostList.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; JoinSelected(); } };
+            col.Controls.Add(Section("Hosts on the LAN  ·  double-click to join"));
             col.Controls.Add(hostList);
 
-            ipBox = new TextBox { Width = 160 };
             col.Controls.Add(Row(
-                NewButton("Join selected", (s, e) => JoinSelected()),
+                NewButton("Join selected", (s, e) => JoinSelected(), ButtonKind.Primary),
                 NewButton("Refresh", (s, e) => discovery?.Refresh()),
-                NewButton("Back", (s, e) => { StopDiscovery(); ShowPage(menuPage); })));
-            col.Controls.Add(Row(NewLabel("Or host IP:"), ipBox, NewButton("Join IP", (s, e) => JoinTyped(), 100, 30)));
-            col.Controls.Add(NewLabel(
-                "After joining, your keyboard is the controller (Pad mode). F12 = Pad mode on/off, Ctrl+F12 = leave.",
-                9f, FontStyle.Regular, Color.DimGray));
+                NewButton("Back", (s, e) => { StopDiscovery(); ShowPage(menuPage); }, ButtonKind.Ghost, 110)));
+            col.Controls.Add(Para(
+                "After joining, your keyboard is the controller (Pad mode). F12 = Pad mode on/off, Ctrl+F12 = leave.", 9f));
         }
 
         void BuildJoinedPage()
         {
             joinedPage = NewPage();
             var col = Column(joinedPage);
-            joinedTitle = NewLabel("", 14f, FontStyle.Bold, Accent);
-            padModeLabel = NewLabel("", 16f, FontStyle.Bold);
+            joinedTitle = NewLabel("", 16f, FontStyle.Bold);
+            joinedTitle.MaximumSize = new Size(640, 0);
+            col.Controls.Add(PageHeader(joinedTitle,
+                NewLabel("Your keyboard is a controller on the host PC.", 10.5f, FontStyle.Regular, Theme.Muted)));
+            padModeLabel = new Pill { Font = Theme.Font(13f, FontStyle.Bold), ForeColor = Color.White, Margin = new Padding(0, 6, 0, 4) };
             keysText = new TextBox
             {
                 Multiline = true,
                 ReadOnly = true,
                 Font = new Font("Consolas", 11f),
-                Size = new Size(700, 150),
+                Dock = DockStyle.Fill,
                 Text = cfg.KeyMap.Describe().Replace("\n", Environment.NewLine),
-                BackColor = SystemColors.Window,
+                BackColor = Theme.Surface,
+                ForeColor = Theme.Text,
+                BorderStyle = BorderStyle.None,
                 TabStop = false,
             };
-            col.Controls.Add(joinedTitle);
+            // the text box has no padding of its own: put it on a card
+            var keysCard = new CardPanel { Height = 172, Padding = new Padding(16, 14, 12, 10), Margin = new Padding(0, 0, 0, 8), Tag = Fill };
+            keysCard.Controls.Add(keysText);
+
             col.Controls.Add(padModeLabel);
-            col.Controls.Add(NewLabel("Your controls (set by the host's game):", 10f, FontStyle.Bold));
-            col.Controls.Add(keysText);
-            col.Controls.Add(NewLabel(
+            col.Controls.Add(Section("Your controls  ·  set by the host's game", 18));
+            col.Controls.Add(keysCard);
+            col.Controls.Add(Para(
                 $"{KeyMap.KeyName(cfg.ToggleKey)} = Pad mode on/off (off = keyboard works normally again).   " +
-                $"Ctrl+{KeyMap.KeyName(cfg.ToggleKey)} = leave the game.", 10f));
-            col.Controls.Add(NewButton("Leave game", (s, e) => LeaveGame(null)));
+                $"Ctrl+{KeyMap.KeyName(cfg.ToggleKey)} = leave the game.", 10f, Theme.Text));
+            col.Controls.Add(NewButton("Leave game", (s, e) => LeaveGame(null), ButtonKind.Danger));
         }
 
         void OpenJoin(string address)
@@ -574,7 +742,8 @@ namespace LanPad.UI
                 {
                     h.HostName, h.GameName, $"{h.SlotsFree} / {h.SlotsTotal}", h.PinRequired ? "yes" : "no",
                     h.EndPoint.Address.ToString(),
-                }) { Tag = h };
+                }) { Tag = h, UseItemStyleForSubItems = false };
+                item.SubItems[2].ForeColor = h.SlotsFree > 0 ? Theme.Good : Theme.Bad;
                 hostList.Items.Add(item);
                 if (h.EndPoint.Address.ToString() == selected) item.Selected = true;
             }
@@ -717,7 +886,7 @@ namespace LanPad.UI
             padModeLabel.Text = on
                 ? $"PAD MODE: ON   (keyboard = controller, {KeyMap.KeyName(cfg.ToggleKey)} to turn off)"
                 : $"PAD MODE: OFF  (keyboard works normally, {KeyMap.KeyName(cfg.ToggleKey)} to turn on)";
-            padModeLabel.ForeColor = on ? Good : Bad;
+            padModeLabel.Fill = on ? Theme.Blend(Theme.Good, Theme.Back, 0.25f) : Theme.Blend(Theme.Bad, Theme.Back, 0.2f);
             if (withToast)
                 toast.ShowMessage(on ? "PAD MODE ON" : "PAD MODE OFF - keyboard is normal", on ? Color.LightGreen : Color.Orange);
         }
@@ -752,7 +921,9 @@ namespace LanPad.UI
             {
                 UpdateStream();
                 streamLabel.Text = streamStatus;
-                streamLabel.ForeColor = broadcaster != null && broadcaster.IsRunning ? Good : (streamStatus.Contains("FAILED") ? Bad : SystemColors.ControlText);
+                streamLabel.DotColor = broadcaster != null && broadcaster.IsRunning ? Theme.Good
+                    : streamStatus.Contains("FAILED") || streamStatus.Contains("missing") ? Theme.Bad
+                    : streamBusy ? Theme.Warn : Theme.Muted;
 
                 var players = server.Snapshot();
                 uint? selected = playerList.SelectedItems.Count > 0 ? (uint?)playerList.SelectedItems[0].Tag : null;
@@ -762,8 +933,9 @@ namespace LanPad.UI
                 {
                     var item = new ListViewItem(new[]
                     {
-                        $"#{p.Slot}", p.Name, p.EndPoint.Address.ToString(), p.Idle ? "idle (no input)" : "connected",
-                    }) { Tag = p.ClientId };
+                        $"Pad {p.Slot}", p.Name, p.EndPoint.Address.ToString(), p.Idle ? "idle (no input)" : "connected",
+                    }) { Tag = p.ClientId, UseItemStyleForSubItems = false };
+                    item.SubItems[3].ForeColor = p.Idle ? Theme.Warn : Theme.Good;
                     playerList.Items.Add(item);
                     if (selected == p.ClientId) item.Selected = true;
                 }

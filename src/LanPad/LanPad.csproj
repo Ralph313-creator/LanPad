@@ -9,6 +9,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>LanPad.ico</ApplicationIcon>
     <Version>0.2.0</Version>
     <Product>LanPad</Product>
     <Description>LAN keyboard-to-controller and screen stream for local multiplayer games</Description>
@@ -25,6 +26,11 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- made by scripts\make-icon.ps1; also embedded so the windows can show it -->
+    <EmbeddedResource Include="LanPad.ico" LogicalName="LanPad.ico" />
   </ItemGroup>
 
   <ItemGroup>
