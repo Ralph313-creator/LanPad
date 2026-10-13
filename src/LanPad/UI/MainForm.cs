@@ -427,9 +427,11 @@ namespace LanPad.UI
         {
             if (server == null || broadcaster == null || streamBusy) return;
             bool want = cfg.AlwaysStream || server.PlayerCount > 0;
-            if (want && !broadcaster.IsRunning && DateTime.UtcNow >= streamRetryAfter)
+            if (want && (!broadcaster.IsRunning || broadcaster.IsStalled) && DateTime.UtcNow >= streamRetryAfter)
             {
                 if (StreamBroadcaster.FindFfmpeg() == null) return;
+                // Start() stops the old ffmpeg first, so a hung stream is simply started again.
+                if (broadcaster.IsRunning) Log.Warn("The stream picture stopped for 5 s; restarting the stream");
                 streamBusy = true;
                 streamStatus = "Stream: starting...";
                 var first = server.Snapshot().FirstOrDefault();

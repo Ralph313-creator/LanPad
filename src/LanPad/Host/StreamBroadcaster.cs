@@ -13,20 +13,29 @@ namespace LanPad.Host
 {
     /// <summary>
     /// Captures the host screen (Desktop Duplication via ffmpeg ddagrab) and sound (WASAPI loopback),
-    /// encodes once with the AMD hardware encoder (or x264 as fallback) and sends one MPEG-TS
-    /// stream to a UDP multicast group, so any number of Join PCs can watch it.
+    /// encodes once with the AMD hardware encoder (or x264 as fallback) and sends MPEG-TS
+    /// streams to a UDP multicast group, so any number of Join PCs can watch it.
+    ///
+    /// Video and sound are two separate ffmpeg processes. In one process ffmpeg holds the video back
+    /// whenever the sound input falls behind, so a pause in the host's sound (e.g. a game taking over
+    /// the audio device) froze the picture for every player while ffmpeg kept running.
     /// </summary>
     public sealed class StreamBroadcaster : IDisposable
     {
         enum Attempt { AmfZeroCopy, AmfSystemMemory, X264 }
+
+        const string Ts = "-f mpegts -muxdelay 0 -muxpreload 0 -flush_packets 1";
 
         static bool zeroCopyFailed;
 
         readonly LanPadConfig cfg;
         readonly object gate = new object();
         readonly LinkedList<string> lastErrors = new LinkedList<string>();
-        Process ffmpeg;
-        Stream ffmpegInput;
+        Process ffmpeg;        // video: screen -> H.264 -> port
+        Process audioFfmpeg;   // sound: loopback on stdin -> AAC -> port + 2
+        Stream audioInput;
+        long lastFrame;
+        DateTime lastFrameAt;
         WasapiLoopbackCapture capture;
         WasapiOut keepAudioAlive;
         string target = "";
@@ -50,6 +59,12 @@ namespace LanPad.Host
         public bool IsRunning
         {
             get { lock (gate) return ffmpeg != null && !ffmpeg.HasExited; }
+        }
+
+        /// <summary>True when the video ffmpeg runs but has encoded no new frame for 5 s (capture or encoder hung).</summary>
+        public bool IsStalled
+        {
+            get { lock (gate) return ffmpeg != null && !ffmpeg.HasExited && DateTime.UtcNow - lastFrameAt > TimeSpan.FromSeconds(5); }
         }
 
         /// <summary>Quick test: can this PC encode H.264 with the AMD hardware encoder?</summary>
@@ -119,24 +134,6 @@ namespace LanPad.Host
         {
             lock (lastErrors) lastErrors.Clear();
 
-            // Audio: WASAPI loopback of everything the host plays. Its format decides the raw pipe format.
-            WaveFormat wf = null;
-            if (IncludeAudio)
-            {
-                try
-                {
-                    StartKeepAlive();
-                    capture = new WasapiLoopbackCapture();
-                    wf = capture.WaveFormat;
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn("No audio device for loopback capture, streaming video only: " + ex.Message);
-                    capture = null;
-                    wf = null;
-                }
-            }
-
             // x264 (CPU) cannot keep 60 fps on an APU while a game runs; 30 fps is the safe fallback.
             int fps = attempt == Attempt.X264 ? Math.Min(cfg.Fps, 30) : cfg.Fps;
             int br = cfg.BitrateKbps;
@@ -163,27 +160,84 @@ namespace LanPad.Host
                 : $"-c:v h264_amf -usage ultralowlatency -quality speed -rc cbr -latency 1 -async_depth 1 " +
                   $"-b:v {br}k -maxrate {br}k -bufsize {br / 2}k -g {fps} -bf 0 -header_spacing {fps} -forced_idr 1";
 
-            // Video and sound go out as two separate streams (port and port+2). In one combined stream
-            // the video has to wait for audio packets, which measured about 100 ms of extra delay.
-            const string ts = "-f mpegts -muxdelay 0 -muxpreload 0 -flush_packets 1";
-            var sb = new StringBuilder("-hide_banner -loglevel warning -nostats ");
+            // -progress reports the encoded frame count every second, so a hung capture shows up as IsStalled.
+            var sb = new StringBuilder("-hide_banner -loglevel warning -nostats -progress pipe:1 -stats_period 1 ");
             sb.Append("-thread_queue_size 64 ").Append(video).Append(' ');
-            if (wf != null)
-                sb.Append($"-thread_queue_size 1024 -f {RawFormat(wf)} -ar {wf.SampleRate} -ac {wf.Channels} -i pipe:0 ");
-            sb.Append("-map 0:v ").Append(encoder).Append(' ').Append(ts).Append(' ');
+            sb.Append(encoder).Append(' ').Append(Ts).Append(' ');
             if (!string.IsNullOrWhiteSpace(ExtraOutputArgs)) sb.Append(ExtraOutputArgs).Append(' ');
-            sb.Append($"\"{url}\" ");
-            if (wf != null)
-                sb.Append($"-map 1:a -c:a aac -b:a 128k -ar 48000 -ac 2 {ts} \"{AudioUrl(url)}\"");
+            sb.Append($"\"{url}\"");
 
-            var psi = new ProcessStartInfo(exe, sb.ToString())
+            Process p = Launch(exe, sb.ToString(), stdin: false, progress: true);
+            if (p == null) return false;
+            lock (gate)
+            {
+                ffmpeg = p;
+                lastFrame = -1;
+                lastFrameAt = DateTime.UtcNow;
+            }
+
+            // If ffmpeg is still running after 3 s, the encoder and capture work.
+            if (p.WaitForExit(3000))
+            {
+                AddError($"ffmpeg exited with code {p.ExitCode}");
+                Stop();
+                return false;
+            }
+            if (IncludeAudio) StartAudio(exe, AudioUrl(url));
+            return true;
+        }
+
+        /// <summary>
+        /// Host sound (WASAPI loopback of everything it plays) into its own ffmpeg. A failure here only
+        /// costs the sound, never the picture.
+        /// </summary>
+        void StartAudio(string exe, string url)
+        {
+            WaveFormat wf;
+            try
+            {
+                StartKeepAlive();
+                capture = new WasapiLoopbackCapture();
+                wf = capture.WaveFormat;
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("No audio device for loopback capture, streaming video only: " + ex.Message);
+                StopAudio();
+                return;
+            }
+
+            string args = $"-hide_banner -loglevel warning -nostats -thread_queue_size 1024 " +
+                          $"-f {RawFormat(wf)} -ar {wf.SampleRate} -ac {wf.Channels} -i pipe:0 " +
+                          $"-c:a aac -b:a 128k -ar 48000 -ac 2 {Ts} \"{url}\"";
+            Process p = Launch(exe, args, stdin: true, progress: false);
+            if (p == null)
+            {
+                Log.Warn("Sound stream could not start, streaming video only: " + LastErrors());
+                StopAudio();
+                return;
+            }
+            lock (gate)
+            {
+                audioFfmpeg = p;
+                audioInput = p.StandardInput.BaseStream;
+            }
+            capture.DataAvailable += OnAudio;
+            capture.RecordingStopped += OnAudioStopped;
+            capture.StartRecording();
+        }
+
+        Process Launch(string exe, string args, bool stdin, bool progress)
+        {
+            var psi = new ProcessStartInfo(exe, args)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                RedirectStandardInput = true,
+                RedirectStandardInput = stdin,
+                RedirectStandardOutput = progress,
                 RedirectStandardError = true,
             };
-            Log.Info("ffmpeg " + psi.Arguments);
+            Log.Info("ffmpeg " + args);
 
             Process p;
             try
@@ -193,8 +247,7 @@ namespace LanPad.Host
             catch (Exception ex)
             {
                 AddError(ex.Message);
-                StopAudio();
-                return false;
+                return null;
             }
 
             string ffLog = Path.Combine(AppPaths.TempDir, "LanPad-ffmpeg.log");
@@ -205,27 +258,25 @@ namespace LanPad.Host
                 try { File.AppendAllText(ffLog, e.Data + Environment.NewLine); } catch (IOException) { }
             };
             p.BeginErrorReadLine();
+            if (progress)
+            {
+                p.OutputDataReceived += OnProgress;
+                p.BeginOutputReadLine();
+            }
+            return p;
+        }
 
+        void OnProgress(object sender, DataReceivedEventArgs e)
+        {
+            string line = e.Data;
+            if (line == null || !line.StartsWith("frame=")) return;
+            if (!long.TryParse(line.Substring(6).Trim(), out long frame)) return;
             lock (gate)
             {
-                ffmpeg = p;
-                ffmpegInput = p.StandardInput.BaseStream;
+                if (sender != ffmpeg || frame == lastFrame) return;
+                lastFrame = frame;
+                lastFrameAt = DateTime.UtcNow;
             }
-
-            if (capture != null)
-            {
-                capture.DataAvailable += OnAudio;
-                capture.StartRecording();
-            }
-
-            // If ffmpeg is still running after 3 s, the encoder and capture work.
-            if (p.WaitForExit(3000))
-            {
-                AddError($"ffmpeg exited with code {p.ExitCode}");
-                Stop();
-                return false;
-            }
-            return true;
         }
 
         /// <summary>The sound stream uses the video port + 2 (5004 -> 5006).</summary>
@@ -253,7 +304,7 @@ namespace LanPad.Host
         void OnAudio(object sender, WaveInEventArgs e)
         {
             Stream input;
-            lock (gate) input = ffmpegInput;
+            lock (gate) input = audioInput;
             if (input == null || e.BytesRecorded == 0) return;
             try
             {
@@ -261,6 +312,11 @@ namespace LanPad.Host
             }
             catch (IOException) { }
             catch (ObjectDisposedException) { }
+        }
+
+        void OnAudioStopped(object sender, StoppedEventArgs e)
+        {
+            if (e.Exception != null) Log.Warn("Host sound capture stopped (the picture keeps going): " + e.Exception.Message);
         }
 
         /// <summary>
@@ -289,6 +345,7 @@ namespace LanPad.Host
             if (capture != null)
             {
                 capture.DataAvailable -= OnAudio;
+                capture.RecordingStopped -= OnAudioStopped;
                 try { capture.StopRecording(); } catch (Exception) { }
                 capture.Dispose();
                 capture = null;
@@ -318,24 +375,33 @@ namespace LanPad.Host
         public void Stop()
         {
             StopAudio();
-            Process p;
+            Process video, audio;
             lock (gate)
             {
-                p = ffmpeg;
+                video = ffmpeg;
                 ffmpeg = null;
-                try { ffmpegInput?.Close(); } catch (IOException) { }
-                ffmpegInput = null;
+                audio = audioFfmpeg;
+                audioFfmpeg = null;
+                try { audioInput?.Close(); } catch (IOException) { }
+                audioInput = null;
             }
+            if (video == null && audio == null) return;
+            End(audio, 1500); // stdin closed: it finishes by itself
+            End(video, 0);    // live UDP output, nothing to finish
+            target = "";
+            Log.Info("Stream stopped");
+        }
+
+        static void End(Process p, int graceMs)
+        {
             if (p == null) return;
             try
             {
-                if (!p.HasExited && !p.WaitForExit(1500)) p.Kill();
+                if (!p.HasExited && !p.WaitForExit(graceMs)) p.Kill();
             }
             catch (InvalidOperationException) { }
             catch (System.ComponentModel.Win32Exception) { }
             p.Dispose();
-            target = "";
-            Log.Info("Stream stopped");
         }
 
         public void Dispose() => Stop();
