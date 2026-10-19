@@ -1,5 +1,5 @@
 # Opens a test Host window (other ports, no controllers plugged, chosen game) and screenshots it.
-# Safe to run while another LanPad is hosting on this PC.
+# Close any open LanPad first: only one LanPad runs at a time.
 param(
     [string]$Release = (Join-Path $PSScriptRoot "..\src\LanPad\bin\Release"),
     [string]$Game = "Tekken 7"

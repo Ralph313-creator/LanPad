@@ -10,8 +10,8 @@ namespace LanPad.Join
     /// Global low-level keyboard (and mouse) hook. Works while the stream viewer has focus.
     /// In Pad mode every key is captured for the controller and blocked from other programs,
     /// so typing W/A/S/D never reaches the viewer or Windows. Three LanPad hotkeys (Settings) work
-    /// in and out of Pad mode: Pad mode on/off (F12), leave the game (Ctrl+F12), show / hide the
-    /// key cheat sheet (Shift+F12) and switch to this PC / back to the game (Alt+F12).
+    /// in and out of Pad mode: Pad mode on/off (F12), leave the game (Ctrl+F12) and switch to
+    /// this PC / back to the game (Alt+F12).
     /// Must be installed on a thread with a message loop (the WinForms UI thread).
     /// </summary>
     public sealed class KeyboardHook : IDisposable
@@ -59,19 +59,17 @@ namespace LanPad.Join
         /// <summary>LanPad shortcuts (key code + Ctrl / Shift / Alt flags), set in Settings > Hotkeys.</summary>
         public Keys PadKey { get; set; } = Keys.F12;
         public Keys LeaveKey { get; set; } = Keys.Control | Keys.F12;
-        public Keys OverlayKey { get; set; } = Keys.Shift | Keys.F12;
         /// <summary>Switch to this PC (stream hidden, keyboard / mouse normal) and back to the game.</summary>
         public Keys SwitchKey { get; set; } = Keys.Alt | Keys.F12;
         public bool SwallowMouse { get; set; } = true;
 
-        public enum Hotkey { None, PadMode, Leave, Overlay, Switch }
+        public enum Hotkey { None, PadMode, Leave, Switch }
 
         /// <summary>Which LanPad shortcut a key press is: same key and exactly the same Ctrl / Shift / Alt.</summary>
-        public static Hotkey Match(int vk, Keys modifiers, Keys padKey, Keys leaveKey, Keys overlayKey, Keys switchKey)
+        public static Hotkey Match(int vk, Keys modifiers, Keys padKey, Keys leaveKey, Keys switchKey)
         {
             bool Is(Keys hotkey) => (int)(hotkey & Keys.KeyCode) == vk && (hotkey & Keys.Modifiers) == modifiers;
             if (Is(leaveKey)) return Hotkey.Leave;
-            if (Is(overlayKey)) return Hotkey.Overlay;
             if (Is(switchKey)) return Hotkey.Switch;
             if (Is(padKey)) return Hotkey.PadMode;
             return Hotkey.None;
@@ -81,7 +79,6 @@ namespace LanPad.Join
         public event Action KeysChanged;
         public event Action<bool> PadModeChanged;
         public event Action LeaveRequested;
-        public event Action OverlayToggleRequested;
         public event Action SwitchRequested;
 
         public KeyboardHook()
@@ -145,12 +142,11 @@ namespace LanPad.Join
                     }
                     if (isDown)
                     {
-                        var hit = Match(vk, Modifiers(), PadKey, LeaveKey, OverlayKey, SwitchKey);
+                        var hit = Match(vk, Modifiers(), PadKey, LeaveKey, SwitchKey);
                         if (hit != Hotkey.None)
                         {
                             hotkeyHeldVk = vk;
                             if (hit == Hotkey.Leave) LeaveRequested?.Invoke();
-                            else if (hit == Hotkey.Overlay) OverlayToggleRequested?.Invoke();
                             else if (hit == Hotkey.Switch) SwitchRequested?.Invoke();
                             else PadMode = !PadMode;
                             return (IntPtr)1;

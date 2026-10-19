@@ -36,8 +36,6 @@ namespace LanPad.Config
         /// <summary>Pad mode on / off ("ToggleKey" in lanpad.ini).</summary>
         public Keys PadKey = Keys.F12;
         public Keys LeaveKey = Keys.Control | Keys.F12;
-        /// <summary>Show / hide the key cheat sheet.</summary>
-        public Keys OverlayKey = Keys.Shift | Keys.F12;
         /// <summary>Switch to this PC (stream hidden, Pad mode off) and back to the game.</summary>
         public Keys SwitchKey = Keys.Alt | Keys.F12;
         public bool SwallowMouse = true;
@@ -52,16 +50,7 @@ namespace LanPad.Config
         /// <summary>Extra copies of each controller change, 10 ms apart (covers a lost packet). 0-4.</summary>
         public int InputResend = 2;
 
-        /// <summary>Key cheat sheet on top of the game while joined (the overlay hotkey hides / shows it).</summary>
-        public bool Overlay = true;
-        /// <summary>TopLeft, TopRight, BottomLeft or BottomRight.</summary>
-        public string OverlayCorner = "TopRight";
-        /// <summary>30-100 %.</summary>
-        public int OverlayOpacity = 85;
-
-        public static readonly string[] OverlayCorners = { "TopLeft", "TopRight", "BottomLeft", "BottomRight" };
-
-        public Keys[] Hotkeys => new[] { PadKey, LeaveKey, OverlayKey, SwitchKey };
+        public Keys[] Hotkeys => new[] { PadKey, LeaveKey, SwitchKey };
 
         // [Keys]
         public KeyMap KeyMap = KeyMap.Default();
@@ -110,27 +99,15 @@ namespace LanPad.Config
             }
             c.PadKey = Hotkey("ToggleKey", c.PadKey);
             c.LeaveKey = Hotkey("LeaveKey", c.LeaveKey);
-            c.OverlayKey = Hotkey("OverlayKey", c.OverlayKey);
             c.SwitchKey = Hotkey("SwitchKey", c.SwitchKey);
             if (c.Hotkeys.Distinct().Count() < c.Hotkeys.Length)
             {
-                warnings?.Add("[Join] ToggleKey, LeaveKey, OverlayKey and SwitchKey must be different " +
-                              "(using F12, Ctrl+F12, Shift+F12, Alt+F12)");
+                warnings?.Add("[Join] ToggleKey, LeaveKey and SwitchKey must be different " +
+                              "(using F12, Ctrl+F12, Alt+F12)");
                 var d = new LanPadConfig();
                 c.PadKey = d.PadKey;
                 c.LeaveKey = d.LeaveKey;
-                c.OverlayKey = d.OverlayKey;
                 c.SwitchKey = d.SwitchKey;
-            }
-
-            c.Overlay = ini.GetBool("Join", "Overlay", c.Overlay);
-            c.OverlayOpacity = Clamp(ini.GetInt("Join", "OverlayOpacity", c.OverlayOpacity), 30, 100);
-            string corner = ini.Get("Join", "OverlayCorner", c.OverlayCorner);
-            c.OverlayCorner = Array.Find(OverlayCorners, x => string.Equals(x, corner, StringComparison.OrdinalIgnoreCase));
-            if (c.OverlayCorner == null)
-            {
-                warnings?.Add($"[Join] OverlayCorner: use {string.Join(", ", OverlayCorners)} (using TopRight)");
-                c.OverlayCorner = "TopRight";
             }
 
             foreach (PadAction action in Enum.GetValues(typeof(PadAction)))
@@ -164,11 +141,7 @@ namespace LanPad.Config
             IniFile.SetValue(path, "Join", "SwallowMouse", B(SwallowMouse));
             IniFile.SetValue(path, "Join", "ToggleKey", KeyMap.HotkeyText(PadKey));
             IniFile.SetValue(path, "Join", "LeaveKey", KeyMap.HotkeyText(LeaveKey));
-            IniFile.SetValue(path, "Join", "OverlayKey", KeyMap.HotkeyText(OverlayKey));
             IniFile.SetValue(path, "Join", "SwitchKey", KeyMap.HotkeyText(SwitchKey));
-            IniFile.SetValue(path, "Join", "Overlay", B(Overlay));
-            IniFile.SetValue(path, "Join", "OverlayCorner", OverlayCorner);
-            IniFile.SetValue(path, "Join", "OverlayOpacity", OverlayOpacity.ToString());
             IniFile.SetValue(path, "Performance", "HighPriority", B(HighPriority));
             IniFile.SetValue(path, "Performance", "NoThrottling", B(NoThrottling));
             IniFile.SetValue(path, "Performance", "KeepAwake", B(KeepAwake));

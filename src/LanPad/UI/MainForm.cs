@@ -40,14 +40,9 @@ namespace LanPad.UI
         IDisposable hostTweaks, joinTweaks;
 
         // Settings page
-        DarkComboBox fpsBox, bitrateBox, encoderBox, viewerBox, resendBox, cornerBox, opacityBox;
-        ToggleSwitch highPrioritySwitch, noThrottlingSwitch, keepAwakeSwitch, autoPadSwitch, fullscreenSwitch, swallowMouseSwitch, overlaySwitch;
-        KeyButton padKeyButton, leaveKeyButton, overlayKeyButton, switchKeyButton;
-
-        // key cheat sheet on top of the game (joined PC)
-        readonly KeyOverlay overlay = new KeyOverlay();
-        bool overlayShown; // starts as the Overlay setting at each join; Shift + toggle key flips it
-        readonly Timer previewTimer = new Timer { Interval = 6000 };
+        DarkComboBox fpsBox, bitrateBox, encoderBox, viewerBox, resendBox;
+        ToggleSwitch highPrioritySwitch, noThrottlingSwitch, keepAwakeSwitch, autoPadSwitch, fullscreenSwitch, swallowMouseSwitch;
+        KeyButton padKeyButton, leaveKeyButton, switchKeyButton;
         Label settingsStatus;
 
         // Host
@@ -108,7 +103,6 @@ namespace LanPad.UI
             refreshTimer = new Timer { Interval = 500 };
             refreshTimer.Tick += (s, e) => RefreshUi();
             refreshTimer.Start();
-            previewTimer.Tick += EndPreview;
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -127,12 +121,10 @@ namespace LanPad.UI
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             refreshTimer.Stop();
-            previewTimer.Stop();
             LeaveGame(null);
             StopDiscovery();
             StopHost(false);
             toast.Dispose();
-            overlay.Dispose();
             base.OnFormClosing(e);
         }
 
@@ -451,16 +443,15 @@ namespace LanPad.UI
 
             padKeyButton = HotkeyButton();
             switchKeyButton = HotkeyButton();
-            overlayKeyButton = HotkeyButton();
             leaveKeyButton = HotkeyButton();
-            // two rows of two: the four captions do not fit next to each other
+            // two rows: the three captions do not fit next to each other
             Control HotkeyField(string caption, KeyButton b)
             {
                 var f = Field(caption, b);
                 f.MinimumSize = new Size(260, 0);
                 return f;
             }
-            var secondRow = Row(HotkeyField("Show / hide key cheat sheet", overlayKeyButton), HotkeyField("Leave the game", leaveKeyButton));
+            var secondRow = Row(HotkeyField("Leave the game", leaveKeyButton));
             secondRow.Margin = new Padding(0, 10, 0, 4);
             col.Controls.Add(Section("Hotkeys  ·  joined PC"));
             col.Controls.Add(AutoCard(
@@ -468,19 +459,6 @@ namespace LanPad.UI
                 secondRow,
                 Hint("Click a box, then press the key - with Ctrl, Shift or Alt if you like (e.g. Ctrl+F12). Esc = cancel. " +
                      "They work in Pad mode too. A key without Ctrl / Shift / Alt stops working as a controller button.")));
-
-            cornerBox = ChoiceBox(170, new Choice("TopRight", "Top right"), new Choice("TopLeft", "Top left"),
-                new Choice("BottomRight", "Bottom right"), new Choice("BottomLeft", "Bottom left"));
-            opacityBox = ChoiceBox(190, new Choice(50, "50 % (see-through)"), new Choice(70, "70 %"),
-                new Choice(85, "85 % (default)"), new Choice(100, "100 % (solid)"));
-            var preview = NewButton("Preview", (s, e) => PreviewOverlay(), ButtonKind.Secondary, 110, 30);
-            preview.Margin = new Padding(0, 17, 0, 4);
-            col.Controls.Add(Section("Key cheat sheet  ·  joined PC"));
-            col.Controls.Add(AutoCard(
-                ToggleRow("Show the keys on top of the game",
-                    "Which key is which Xbox button, in a corner over the game. Its hotkey (Shift+F12) hides / shows it while playing.",
-                    out overlaySwitch),
-                Row(Field("Position", cornerBox), Field("Opacity", opacityBox), preview)));
 
             settingsStatus = NewLabel("", 9.5f, FontStyle.Regular, Theme.Good);
             settingsStatus.Margin = new Padding(0, 6, 0, 0);
@@ -497,7 +475,7 @@ namespace LanPad.UI
             var b = new KeyButton { HotkeyMode = true, Size = new Size(170, 30), Margin = new Padding(0, 2, 16, 4) };
             b.KeyChosen += (button, key) =>
             {
-                var others = new[] { padKeyButton, leaveKeyButton, overlayKeyButton, switchKeyButton }.Where(x => x != button && x != null);
+                var others = new[] { padKeyButton, leaveKeyButton, switchKeyButton }.Where(x => x != button && x != null);
                 if (others.Any(x => x.Value.Length == 1 && x.Value[0] == key))
                 {
                     ShowSettingsStatus($"{Hk(key)} is already another hotkey - pick a different one.", Theme.Bad);
@@ -546,28 +524,7 @@ namespace LanPad.UI
             swallowMouseSwitch.Checked = c.SwallowMouse;
             padKeyButton.Value = new[] { c.PadKey };
             leaveKeyButton.Value = new[] { c.LeaveKey };
-            overlayKeyButton.Value = new[] { c.OverlayKey };
             switchKeyButton.Value = new[] { c.SwitchKey };
-            overlaySwitch.Checked = c.Overlay;
-            SelectChoice(cornerBox, c.OverlayCorner, c.OverlayCorner);
-            SelectChoice(opacityBox, c.OverlayOpacity, $"{c.OverlayOpacity} %");
-        }
-
-        /// <summary>Shows the cheat sheet for a few seconds with the choices on the Settings page (not saved yet).</summary>
-        void PreviewOverlay()
-        {
-            if (client != null) return; // joined: the real one is on screen
-            overlay.ShowSheet("Preview  ·  NBA 2K14", "Controller 2", cfg.KeyMap, true,
-                FooterText(padKeyButton.Value[0], switchKeyButton.Value[0], overlayKeyButton.Value[0], leaveKeyButton.Value[0]),
-                Value(cornerBox, cfg.OverlayCorner), Value(opacityBox, cfg.OverlayOpacity));
-            previewTimer.Stop();
-            previewTimer.Start();
-        }
-
-        void EndPreview(object sender, EventArgs e)
-        {
-            previewTimer.Stop();
-            if (client == null) overlay.HideSheet();
         }
 
         void SaveSettings()
@@ -585,19 +542,13 @@ namespace LanPad.UI
             cfg.SwallowMouse = swallowMouseSwitch.Checked;
             cfg.PadKey = padKeyButton.Value[0];
             cfg.LeaveKey = leaveKeyButton.Value[0];
-            cfg.OverlayKey = overlayKeyButton.Value[0];
             cfg.SwitchKey = switchKeyButton.Value[0];
             if (hook != null)
             {
                 hook.PadKey = cfg.PadKey;
                 hook.LeaveKey = cfg.LeaveKey;
-                hook.OverlayKey = cfg.OverlayKey;
                 hook.SwitchKey = cfg.SwitchKey;
             }
-            cfg.Overlay = overlaySwitch.Checked;
-            cfg.OverlayCorner = Value(cornerBox, cfg.OverlayCorner);
-            cfg.OverlayOpacity = Value(opacityBox, cfg.OverlayOpacity);
-            if (client != null) UpdateOverlay();
             joinedHotkeys.Text = HotkeysText();
             Tweaks.Configure(cfg); // used from the next host / join session on
             if (client != null) client.ExtraSends = cfg.InputResend;
@@ -1015,7 +966,7 @@ namespace LanPad.UI
         string HotkeysText() =>
             $"{Hk(cfg.PadKey)} = Pad mode on/off (off = keyboard works normally again).   " +
             $"{Hk(cfg.SwitchKey)} = switch to your own PC and back.   " +
-            $"{Hk(cfg.LeaveKey)} = leave the game.   {Hk(cfg.OverlayKey)} = show / hide the key cheat sheet.";
+            $"{Hk(cfg.LeaveKey)} = leave the game.";
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         static extern IntPtr GetForegroundWindow();
@@ -1171,7 +1122,7 @@ namespace LanPad.UI
             {
                 hook = new KeyboardHook
                 {
-                    PadKey = cfg.PadKey, LeaveKey = cfg.LeaveKey, OverlayKey = cfg.OverlayKey, SwitchKey = cfg.SwitchKey,
+                    PadKey = cfg.PadKey, LeaveKey = cfg.LeaveKey, SwitchKey = cfg.SwitchKey,
                     SwallowMouse = cfg.SwallowMouse,
                 };
                 hook.Install();
@@ -1200,7 +1151,6 @@ namespace LanPad.UI
             hook.KeysChanged += c.Signal;
             hook.PadModeChanged += on => UpdatePadModeLabel(true);
             hook.LeaveRequested += () => BeginInvoke((Action)(() => LeaveGame(null)));
-            hook.OverlayToggleRequested += () => BeginInvoke((Action)ToggleOverlay);
             hook.SwitchRequested += () => BeginInvoke((Action)ToggleAway);
             // Pad mode key while on your PC = straight back into the game with Pad mode on
             hook.PadModeChanged += on =>
@@ -1212,42 +1162,11 @@ namespace LanPad.UI
 
             StopDiscovery();
             joinedTitle.Text = $"Joining {host.Address} ...";
-            overlayShown = cfg.Overlay;
-            UpdatePadModeLabel(false); // also shows the cheat sheet
+            UpdatePadModeLabel(false);
             ShowPage(joinedPage);
         }
 
-        /// <summary>Key cheat sheet on top of the game: game, controller number, Pad mode, keys of the current controls.</summary>
-        void UpdateOverlay()
-        {
-            var c = client;
-            if (c == null || !overlayShown || away)
-            {
-                overlay.HideSheet();
-                return;
-            }
-            string title = c.HostGameName.Length > 0 ? c.HostGameName : $"Joining {c.Host.Address}";
-            string sub = c.Status == JoinStatus.Joined ? $"Controller {c.Slot}"
-                       : c.Status == JoinStatus.LostHost ? "Connection lost - retrying..." : "Connecting...";
-            overlay.ShowSheet(title, sub, activeKeyMap, hook != null && hook.PadMode, OverlayFooter(), cfg.OverlayCorner, cfg.OverlayOpacity);
-        }
-
         static string Hk(Keys hotkey) => KeyMap.HotkeyText(hotkey);
-
-        string OverlayFooter() =>
-            FooterText(cfg.PadKey, cfg.SwitchKey, cfg.OverlayKey, cfg.LeaveKey);
-
-        static string FooterText(Keys pad, Keys toPc, Keys hide, Keys leave) =>
-            $"{Hk(pad)} pad   ·   {Hk(toPc)} my PC   ·   {Hk(hide)} hide   ·   {Hk(leave)} leave";
-
-        /// <summary>The overlay hotkey (Shift+F12) while joined.</summary>
-        void ToggleOverlay()
-        {
-            if (client == null) return;
-            overlayShown = !overlayShown;
-            UpdateOverlay();
-            toast.ShowMessage(overlayShown ? "Keys shown" : $"Keys hidden  -  {Hk(cfg.OverlayKey)} shows them", Color.LightSkyBlue, 2000);
-        }
 
         static string JoinedTitle(JoinClient c) =>
             $"JOINED {c.Host.Address} as controller {c.Slot}" + (c.HostGameName.Length > 0 ? $"  -  {c.HostGameName}" : "");
@@ -1265,7 +1184,6 @@ namespace LanPad.UI
             if (c.Status == JoinStatus.Joined) joinedTitle.Text = JoinedTitle(c);
             if (c.HostGameName.Length > 0)
                 toast.ShowMessage($"Game: {c.HostGameName}  -  controls updated", Color.LightSkyBlue, 3000);
-            UpdateOverlay();
         }
 
         void OnJoinStatus(JoinClient c, JoinStatus s)
@@ -1316,7 +1234,6 @@ namespace LanPad.UI
                     LeaveGame("The host closed the room or removed you from the game.");
                     break;
             }
-            UpdateOverlay();
         }
 
         void UpdatePadModeLabel(bool withToast)
@@ -1329,7 +1246,6 @@ namespace LanPad.UI
                 : on ? Theme.Blend(Theme.Good, Theme.Back, 0.25f) : Theme.Blend(Theme.Bad, Theme.Back, 0.2f);
             if (withToast)
                 toast.ShowMessage(on ? "PAD MODE ON" : "PAD MODE OFF - keyboard is normal", on ? Color.LightGreen : Color.Orange);
-            UpdateOverlay();
         }
 
         void LeaveGame(string message)
@@ -1347,7 +1263,6 @@ namespace LanPad.UI
             }
             client?.Dispose();
             client = null;
-            overlay.HideSheet();
             joinTweaks?.Dispose();
             joinTweaks = null;
             if (!wasJoined) return;

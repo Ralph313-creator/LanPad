@@ -239,7 +239,7 @@ namespace LanPad.Join
             return keys.Length == 0 ? "-" : string.Join("/", keys.Select(KeyName));
         }
 
-        /// <summary>Human-readable cheat sheet for the Join screen.</summary>
+        /// <summary>Human-readable key list for the Join screen.</summary>
         public string Describe()
         {
             var sb = new StringBuilder();

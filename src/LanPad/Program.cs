@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
 using LanPad.Config;
 using LanPad.UI;
@@ -40,6 +43,21 @@ namespace LanPad
             if (args.Any(a => a.Equals("--streamtest", StringComparison.OrdinalIgnoreCase)))
                 return StreamTest.Run(cfg, args);
 
+            // one LanPad per PC: starting it again just brings the open window to the front
+            using (new Mutex(true, "LanPad.SingleInstance", out bool first))
+            {
+                if (!first)
+                {
+                    Log.Info("LanPad is already running - showing its window");
+                    ShowRunningWindow();
+                    return 0;
+                }
+                return Run(cfg, warnings, args);
+            }
+        }
+
+        static int Run(LanPadConfig cfg, List<string> warnings, string[] args)
+        {
             var mode = MainForm.StartMode.Menu;
             string joinAddress = null;
             string pin = null;
@@ -57,6 +75,29 @@ namespace LanPad
 
             Application.Run(new MainForm(cfg, warnings, mode, joinAddress, pin));
             return 0;
+        }
+
+        [DllImport("user32.dll")]
+        static extern bool ShowWindow(IntPtr hwnd, int cmd);
+
+        [DllImport("user32.dll")]
+        static extern bool SetForegroundWindow(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        static extern bool IsIconic(IntPtr hwnd);
+
+        static void ShowRunningWindow()
+        {
+            const int SW_RESTORE = 9;
+            using (var me = Process.GetCurrentProcess())
+                foreach (var p in Process.GetProcessesByName(me.ProcessName))
+                    using (p)
+                    {
+                        if (p.Id == me.Id || p.MainWindowHandle == IntPtr.Zero) continue;
+                        if (IsIconic(p.MainWindowHandle)) ShowWindow(p.MainWindowHandle, SW_RESTORE);
+                        SetForegroundWindow(p.MainWindowHandle);
+                        return;
+                    }
         }
     }
 }
