@@ -17,6 +17,12 @@
       "problemMatcher": []
     },
     {
+      "label": "installer",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File scripts/build-installer.ps1",
+      "problemMatcher": []
+    },
+    {
       "label": "run (menu)",
       "type": "shell",
       "command": "Start-Process src/LanPad/bin/Release/LanPad.exe",

@@ -11,13 +11,18 @@ LanPad lets players sit at **different PCs**:
 ## One-time setup (CCBoot image)
 
 1. Boot one PC in **super-client** (image write) mode.
-2. Copy the `LanPad` package folder to it and run, **as Administrator**:
-   `powershell -ExecutionPolicy Bypass -File install-image.ps1`
-   - copies LanPad to `C:\LanPad`
-   - installs the signed **ViGEmBus** driver (virtual Xbox controllers)
+2. Run **`LanPad-Setup-<version>.exe`** (one file, asks for admin) and click through it:
+   - installs LanPad to `C:\LanPad`
+   - installs the signed **ViGEmBus** driver (virtual Xbox controllers), if it isn't there yet
    - adds Windows Firewall rules (UDP in for LanPad, mpv, ffplay)
-   - puts a **LanPad** shortcut on the desktop and runs the self-test
+   - puts a **LanPad** shortcut on the desktop and in the Start menu (with the self-test and an uninstaller)
+
+   No clicks: `LanPad-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`.
+   Updating = run the newer setup over it; `lanpad.ini` and `games.user.ini` are kept.
 3. Save the image. Every PC can now host or join.
+
+Without the installer: copy the `dist\LanPad` package folder and run `install-image.ps1` in it as Administrator
+(`powershell -ExecutionPolicy Bypass -File install-image.ps1`); it does the same and runs the self-test.
 
 ## How to play
 
@@ -129,9 +134,12 @@ Self-test: `LanPad.exe --selftest` (writes `selftest.log`). Stream delay test: `
 
 Open the folder in **VS Code** and press **Ctrl+Shift+B** (needs the .NET 8 SDK), or:
 `powershell -File scripts\package.ps1` → ready package in `dist\LanPad`.
+Installer: `powershell -File scripts\build-installer.ps1` (or the VS Code task **installer**) → `dist\LanPad-Setup-<version>.exe`.
+It downloads the third-party tools first (`scripts\get-third-party.ps1`: pinned versions, SHA-256 / signature checked)
+and needs **Inno Setup 6** (`winget install JRSoftware.InnoSetup`) and **7-Zip** (`winget install 7zip.7zip`).
 The app icon `src\LanPad\LanPad.ico` is drawn by `scripts\make-icon.ps1` (run it again after changing the design).
 Third-party tools (downloaded from official sources, checksums verified): FFmpeg 9.0.2 (gyan.dev),
-mpv 2026-10-13 (shinchiro build), ViGEmBus 1.22.0 (signed by Nefarius Software Solutions).
+mpv 2026-10-19 (shinchiro build), ViGEmBus 1.22.0 (signed by Nefarius Software Solutions).
 
 ## Uninstall the driver
 
