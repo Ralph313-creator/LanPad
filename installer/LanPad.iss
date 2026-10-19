@@ -4,6 +4,7 @@
 ; Does what install-image.ps1 does, in one exe:
 ;   app files to C:\LanPad (users may write there: lanpad.ini / games.user.ini live next to LanPad.exe),
 ;   ViGEmBus driver (if missing), firewall rules, desktop + Start menu shortcuts, and an uninstaller.
+; install-image.ps1 and driver\ are installed too: run install-image.ps1 as admin in C:\LanPad to fix the driver / firewall.
 ; CCBoot: run it once on the super-client (image write mode), then save the image.
 ; Unattended:  LanPad-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 
@@ -55,10 +56,9 @@ Name: "{app}"; Permissions: users-modify
 
 [Files]
 Source: "{#Dist}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; \
-  Excludes: "\lanpad.ini,\install-image.ps1,\driver,games.user.ini,selftest.log,*.pdb,\tools\mpv\doc,\tools\mpv\installer,\tools\mpv\*.bat"
+  Excludes: "\lanpad.ini,games.user.ini,selftest.log,*.pdb,\tools\mpv\doc,\tools\mpv\installer,\tools\mpv\*.bat"
 ; default settings only on a fresh install; an update keeps the cafe's settings
 Source: "{#Dist}\lanpad.ini"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
-Source: "{#Dist}\driver\{#ViGEmExe}"; DestDir: "{tmp}"; Flags: deleteafterinstall; Tasks: driver
 
 [Icons]
 Name: "{group}\LanPad"; Filename: "{app}\LanPad.exe"; WorkingDir: "{app}"; Comment: "LanPad - play local multiplayer games over LAN"
@@ -68,7 +68,7 @@ Name: "{group}\{cm:UninstallProgram,LanPad}"; Filename: "{uninstallexe}"
 Name: "{commondesktop}\LanPad"; Filename: "{app}\LanPad.exe"; WorkingDir: "{app}"; Comment: "LanPad - play local multiplayer games over LAN"; Tasks: desktopicon
 
 [Run]
-Filename: "{tmp}\{#ViGEmExe}"; Parameters: "/quiet /norestart"; StatusMsg: "Installing the virtual Xbox controller driver (ViGEmBus)..."; Flags: waituntilterminated; Tasks: driver
+Filename: "{app}\driver\{#ViGEmExe}"; Parameters: "/quiet /norestart"; StatusMsg: "Installing the virtual Xbox controller driver (ViGEmBus)..."; Flags: waituntilterminated; Tasks: driver
 ; same rule names as install-image.ps1, so either one replaces the other's rules
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""LanPad (host and join)"""; Flags: runhidden; Tasks: firewall
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""LanPad stream viewer (mpv)"""; Flags: runhidden; Tasks: firewall
@@ -96,6 +96,6 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssPostInstall) and WizardIsTaskSelected('driver') and NeedsViGEm then
     SuppressibleMsgBox('The ViGEmBus driver did not install. Joined players will not get controllers on this PC ' +
-      'until it is installed. Run this setup again, or install driver\{#ViGEmExe} by hand.',
+      'until it is installed. Run this setup again, or run install-image.ps1 in ' + ExpandConstant('{app}') + ' as admin.',
       mbError, MB_OK, IDOK);
 end;

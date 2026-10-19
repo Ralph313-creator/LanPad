@@ -119,7 +119,7 @@ HOST:    screen (ddagrab) + sound (WASAPI loopback) -> ffmpeg (AMD AMF H.264) ->
 
 | Problem | Fix |
 |---|---|
-| "ViGEmBus driver is not installed" | Run `install-image.ps1` as admin (in super-client mode). |
+| "ViGEmBus driver is not installed" | Run `install-image.ps1` in the LanPad folder as admin (in super-client mode): `powershell -ExecutionPolicy Bypass -File C:\LanPad\install-image.ps1` |
 | Join PC shows no picture | Firewall rules missing (run the installer) or the switch blocks multicast. Try `Viewer=ffplay`. |
 | Picture is laggy / blocky | Settings → lower the bitrate (e.g. 8 Mbps), then the frame rate, or set the game to 1280x720. |
 | Buttons sometimes missed (Wi-Fi) | Settings → Controller packet repeat → 3 or 4 extra copies. |

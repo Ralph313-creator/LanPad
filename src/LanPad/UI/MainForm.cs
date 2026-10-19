@@ -788,7 +788,7 @@ namespace LanPad.UI
             {
                 MessageBox.Show(this,
                     "The ViGEmBus driver (virtual Xbox controllers) is not installed on this PC.\n\n" +
-                    "Install it once (as admin) with scripts\\install-image.ps1 or the ViGEmBus installer, then try again.",
+                    "Install it once (as admin) with install-image.ps1 in the LanPad folder, then try again.",
                     "LanPad - driver missing", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
