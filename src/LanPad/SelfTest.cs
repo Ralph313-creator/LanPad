@@ -148,6 +148,15 @@ namespace LanPad
         {
             var m = KeyMap.Default();
             Check(MapKeys(m).IsNeutral, "keys: nothing pressed = neutral");
+
+            var pad = new PadState { Buttons = PadButtons.B, LeftTrigger = 200, LeftX = -20000, RightY = 15000 };
+            var both = LocalGamepad.Merge(MapKeys(m, Keys.K, Keys.Space), pad);
+            Check(both.Buttons == (PadButtons.A | PadButtons.B) && both.LeftTrigger == 255 && both.LeftX == -20000 && both.RightY == 15000,
+                "controller on the joined PC: its buttons, trigger and sticks are added to the keyboard's");
+            var keyStick = LocalGamepad.Merge(MapKeys(m, Keys.D), pad);
+            Check(keyStick.LeftX > 0 && keyStick.LeftY == 0 && keyStick.RightY == 15000,
+                "controller on the joined PC: a stick moved with keys wins over the controller's stick");
+            Check(LocalGamepad.Merge(MapKeys(m), PadState.Neutral).IsNeutral, "controller on the joined PC: none plugged in = keyboard only");
             var w = MapKeys(m, Keys.W);
             Check(w.LeftY == 32767 && w.LeftX == 0, "keys: W = left stick up");
             var s = MapKeys(m, Keys.S);

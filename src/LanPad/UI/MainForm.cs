@@ -13,6 +13,7 @@ using LanPad.Games;
 using LanPad.Host;
 using LanPad.Join;
 using LanPad.Net;
+using LanPad.Protocol;
 using Nefarius.ViGEm.Client.Exceptions;
 
 namespace LanPad.UI
@@ -34,7 +35,8 @@ namespace LanPad.UI
         Panel menuPage, hostPage, joinListPage, joinedPage, settingsPage;
         Label joinedHotkeys;
         FlatButton awayButton;
-        bool away, padBeforeAway; // joined player switched to their own PC (stream hidden, Pad mode off)
+        volatile bool away; // joined player switched to their own PC (stream hidden, Pad mode off, controller released)
+        bool padBeforeAway;
 
         // smooth-play tweaks (Tweaks) for the running host / join session
         IDisposable hostTweaks, joinTweaks;
@@ -65,6 +67,7 @@ namespace LanPad.UI
         HostDiscovery discovery;
         KeyboardHook hook;
         JoinClient client;
+        LocalGamepad gamepad; // Xbox controller plugged into this PC, sent along with the keyboard
         Viewer viewer;
         TextBox nameBox, pinBox, ipBox, keysText;
         DarkListView hostList;
@@ -966,7 +969,8 @@ namespace LanPad.UI
         string HotkeysText() =>
             $"{Hk(cfg.PadKey)} = Pad mode on/off (off = keyboard works normally again).   " +
             $"{Hk(cfg.SwitchKey)} = switch to your own PC and back.   " +
-            $"{Hk(cfg.LeaveKey)} = leave the game.";
+            $"{Hk(cfg.LeaveKey)} = leave the game.   " +
+            "An Xbox controller plugged into this PC works too (also with Pad mode off).";
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         static extern IntPtr GetForegroundWindow();
@@ -1143,12 +1147,17 @@ namespace LanPad.UI
             joinedHotkeys.Text = HotkeysText(); // the hotkeys may have changed in Settings
             // LanPad runs the keyboard hook: high priority keeps key presses on time while mpv decodes
             joinTweaks = Tweaks.BeginSession();
-            client = new JoinClient(host, name, pinBox.Text.Trim(), () => KeyMapper.Map(h.IsDown, activeKeyMap))
+            gamepad = new LocalGamepad();
+            var g = gamepad;
+            // on your own PC (away) the controller is released too, like the keyboard
+            client = new JoinClient(host, name, pinBox.Text.Trim(),
+                () => away ? PadState.Neutral : LocalGamepad.Merge(KeyMapper.Map(h.IsDown, activeKeyMap), g.State))
             {
                 ExtraSends = cfg.InputResend,
             };
             var c = client;
             hook.KeysChanged += c.Signal;
+            g.Changed += c.Signal;
             hook.PadModeChanged += on => UpdatePadModeLabel(true);
             hook.LeaveRequested += () => BeginInvoke((Action)(() => LeaveGame(null)));
             hook.SwitchRequested += () => BeginInvoke((Action)ToggleAway);
@@ -1263,6 +1272,8 @@ namespace LanPad.UI
             }
             client?.Dispose();
             client = null;
+            gamepad?.Dispose();
+            gamepad = null;
             joinTweaks?.Dispose();
             joinTweaks = null;
             if (!wasJoined) return;

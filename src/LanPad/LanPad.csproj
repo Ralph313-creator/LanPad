@@ -10,7 +10,7 @@
     <Prefer32Bit>false</Prefer32Bit>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>LanPad.ico</ApplicationIcon>
-    <Version>0.3.2</Version>
+    <Version>0.3.3</Version>
     <Product>LanPad</Product>
     <Description>LAN keyboard-to-controller and screen stream for local multiplayer games</Description>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

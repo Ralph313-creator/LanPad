@@ -3,7 +3,8 @@
 Games like **NBA 2K14** only have local multiplayer: keyboard = player 1, each Xbox controller = one more player.
 LanPad lets players sit at **different PCs**:
 
-- **Host PC** runs the game. Every joined PC's keyboard becomes a **virtual Xbox 360 controller** on the host.
+- **Host PC** runs the game. Every joined PC's keyboard (or the Xbox controller plugged into it) becomes a
+  **virtual Xbox 360 controller** on the host.
 - **Join PCs** see and hear the host's screen, full screen, streamed over the LAN.
 - Up to **5 players**: the host's own keyboard + 4 joined PCs (Windows allows max 4 Xbox controllers).
 - Works offline on the LAN. No accounts, no internet, nothing saved per PC (fine for diskless CCBoot).
@@ -48,6 +49,9 @@ Without the installer: copy the `dist\LanPad` package folder and run `install-im
    - **Ctrl + F12** = leave the game
 
    (all three can be changed in **Settings → Hotkeys**)
+
+   An **Xbox controller** plugged into the join PC works too, together with the keyboard and also with Pad mode
+   off (only while you are switched to your own PC it is ignored).
 
 **Controls — the host's game picks the layout (all: WASD = move, arrows = right stick, Enter/Backspace = Start/Back, 1-4 = D-pad)**
 
@@ -102,7 +106,7 @@ Other settings:
 ## How it works
 
 ```
-JOIN PC: keyboard -> LanPad (hook) -> UDP 47800 -> HOST: LanPad -> ViGEmBus virtual Xbox pad -> game
+JOIN PC: keyboard (hook) + Xbox pad (XInput) -> LanPad -> UDP 47800 -> HOST: LanPad -> ViGEmBus virtual Xbox pad -> game
 HOST:    screen (ddagrab) + sound (WASAPI loopback) -> ffmpeg (AMD AMF H.264) -> UDP multicast
          239.255.77.<host IP last number> : 5004 video, 5006 sound -> mpv on every JOIN PC
 ```
