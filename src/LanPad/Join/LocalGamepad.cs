@@ -105,6 +105,35 @@ namespace LanPad.Join
             }
         }
 
+        /// <summary>
+        /// How many Xbox controllers are connected to this PC right now. The host calls it before plugging in
+        /// its virtual controllers, so real ones keep their slot (Windows allows 4 in total).
+        /// </summary>
+        public static int CountConnected()
+        {
+            int count = 0;
+            for (uint i = 0; i < 4; i++)
+            {
+                XINPUT_STATE x;
+                try
+                {
+                    try
+                    {
+                        if (GetState14(i, out x) == ERROR_SUCCESS) count++;
+                    }
+                    catch (Exception ex) when (ex is DllNotFoundException || ex is EntryPointNotFoundException)
+                    {
+                        if (GetState910(i, out x) == ERROR_SUCCESS) count++;
+                    }
+                }
+                catch (Exception ex) when (ex is DllNotFoundException || ex is EntryPointNotFoundException)
+                {
+                    return 0; // no XInput: no real controllers to make room for
+                }
+            }
+            return count;
+        }
+
         bool Read(uint index, out XINPUT_STATE x)
         {
             x = default(XINPUT_STATE);

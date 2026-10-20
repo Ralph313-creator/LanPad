@@ -36,7 +36,9 @@ Without the installer: copy the `dist\LanPad` package folder and run `install-im
 3. Click **Launch game**. Not found? Click **Browse exe...** once — LanPad remembers it (`games.user.ini`).
    In the game set the display to **windowed / borderless 1920x1080** (fullscreen can break the stream).
 4. When players join they show up in the list. In the game's controller / versus screen each joined player is
-   one Xbox controller. The host plays with this PC's keyboard.
+   one Xbox controller. The host plays with this PC's keyboard, or with an Xbox controller plugged into this PC:
+   plug it in **before** you click Host, so LanPad leaves it its slot (Windows allows 4 controllers in total,
+   so with one host controller 3 PCs can join).
    You can switch the game while players are connected; their controls change right away.
 
 **Join (every other player)**

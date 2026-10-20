@@ -56,6 +56,7 @@ namespace LanPad.UI
         string streamStatus = "Stream: waiting for players";
         Label hostTitle, pinLabel;
         DotLabel padsLabel, streamLabel;
+        int hostControllers; // real Xbox controllers on the host PC when hosting started
         DarkListView playerList;
         List<GameProfile> games = new List<GameProfile>();
         GameProfile currentGame;
@@ -683,15 +684,14 @@ namespace LanPad.UI
         {
             currentGame = g;
             var keys = g.BuildKeyMap(cfg.KeyMap);
-            int maxRemote = Math.Max(1, Math.Min(cfg.MaxPlayers, g.Players - (cfg.HostPlays ? 1 : 0)));
+            int maxRemote = Math.Max(1, Math.Min(pads?.Capacity ?? cfg.MaxPlayers, g.Players - (cfg.HostPlays ? 1 : 0)));
             server?.SetGame(g.Name, keys.ToBytes(), maxRemote);
 
             gameNotes.Text = string.IsNullOrWhiteSpace(g.Notes) ? DefaultNotes(g.Layout) : g.Notes;
             gameInfo.Text = $"{g.Layout} controls for joined PCs   ·   up to {maxRemote} PC(s) can join   ·   " +
                             (g.Installed ? "found: " + g.Exe : "not found on this PC - use Browse exe...");
             gameInfo.ForeColor = g.Installed ? Theme.Muted : Theme.Warn;
-            if (pads != null)
-                padsLabel.Text = $"{pads.Capacity} virtual Xbox 360 controllers ready  ·  up to {maxRemote} players can join this game";
+            if (pads != null) padsLabel.Text = PadsText(maxRemote) + " this game";
 
             if (remember)
             {
@@ -700,6 +700,11 @@ namespace LanPad.UI
                 catch (Exception ex) { Log.Warn("Could not save the selected game: " + ex.Message); }
             }
         }
+
+        string PadsText(int canJoin) =>
+            $"{pads.Capacity} virtual Xbox 360 controllers ready" +
+            (hostControllers > 0 ? $" (+{hostControllers} on this PC)" : "") +
+            $"  ·  up to {canJoin} players can join";
 
         static string DefaultNotes(ControlLayout layout)
         {
@@ -734,9 +739,23 @@ namespace LanPad.UI
         {
             if (server != null) { ShowPage(hostPage); return; }
 
+            // Windows allows 4 Xbox controllers: real ones already on this PC (the host's own) keep their slot
+            hostControllers = LocalGamepad.CountConnected();
+            int padCount = Math.Min(cfg.MaxPlayers, 4 - hostControllers);
+            if (padCount < 1)
+            {
+                MessageBox.Show(this,
+                    "4 Xbox controllers are already connected to this PC, the most Windows allows.\n\n" +
+                    "Unplug one so a joined PC can get a controller, then host again.",
+                    "LanPad", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (hostControllers > 0)
+                Log.Info($"{hostControllers} Xbox controller(s) connected to this PC keep their slot: {padCount} virtual controllers");
+
             try
             {
-                pads = new VirtualPads(cfg.MaxPlayers, cfg.PrePlugPads);
+                pads = new VirtualPads(padCount, cfg.PrePlugPads);
             }
             catch (VigemBusNotFoundException)
             {
@@ -756,7 +775,7 @@ namespace LanPad.UI
             string pin = MakePin(cfg.RoomPin);
             try
             {
-                server = new HostServer(pads, cfg.Port, cfg.MaxPlayers, cfg.PrePlugPads, cfg.EffectiveHostName, cfg.Game, pin);
+                server = new HostServer(pads, cfg.Port, padCount, cfg.PrePlugPads, cfg.EffectiveHostName, cfg.Game, pin);
             }
             catch (SocketException ex)
             {
@@ -775,7 +794,7 @@ namespace LanPad.UI
 
             hostTitle.Text = $"on {cfg.EffectiveHostName}   ·   IP {lan}";
             pinLabel.Text = pin.Length > 0 ? pin : "off";
-            padsLabel.Text = $"{pads.Capacity} virtual Xbox 360 controllers ready  ·  up to {server.MaxPlayers} players can join";
+            padsLabel.Text = PadsText(server.MaxPlayers);
             padsLabel.DotColor = Theme.Good;
             hostTweaks = Tweaks.BeginSession();
             LoadGames();
