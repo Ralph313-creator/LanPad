@@ -184,6 +184,7 @@ Settings → Apps → **ViGEm Bus Driver** → Uninstall.
 
 LanPad is MIT licensed (see [LICENSE](LICENSE)): use it, change it and share it, but keep the "Raptech Solution" copyright notice.
 The third-party tools in the installer (FFmpeg, mpv, ViGEmBus) keep their own licenses.
+
 ---
 
 LanPad — Created by Raptech Solution.
