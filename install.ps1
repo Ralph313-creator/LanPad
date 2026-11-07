@@ -60,6 +60,12 @@ $p = Start-Process -FilePath $file -ArgumentList $setupArgs -Verb RunAs -Wait -P
 Remove-Item $file -Force -ErrorAction SilentlyContinue
 if ($p.ExitCode -ne 0) { throw "Setup failed (exit code $($p.ExitCode))." }
 
+$dir = 'C:\LanPad'
+foreach ($key in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{D0C8B206-9B06-4C19-8A5A-5739687366C6}_is1',
+                 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{D0C8B206-9B06-4C19-8A5A-5739687366C6}_is1') {
+    $item = Get-ItemProperty $key -ErrorAction SilentlyContinue
+    if ($item -and $item.InstallLocation) { $dir = $item.InstallLocation.TrimEnd('\'); break }
+}
 Write-Host ''
-Write-Host "  LanPad $($release.tag_name) installed to C:\LanPad - open it from the desktop shortcut." -ForegroundColor Green
+Write-Host "  LanPad $($release.tag_name) installed to $dir - open it from the desktop shortcut." -ForegroundColor Green
 Write-Host ''
