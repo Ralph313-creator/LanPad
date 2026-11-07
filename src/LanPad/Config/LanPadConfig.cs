@@ -12,6 +12,8 @@ namespace LanPad.Config
         // [General]
         public int Port = 47800;
         public int StreamPort = 5004;
+        /// <summary>Look for a newer LanPad on GitHub when the start screen opens (needs internet; silent when offline).</summary>
+        public bool CheckUpdates = true;
 
         // [Host]
         public string HostName = "";
@@ -65,6 +67,7 @@ namespace LanPad.Config
 
             c.Port = Clamp(ini.GetInt("General", "Port", c.Port), 1024, 65535);
             c.StreamPort = Clamp(ini.GetInt("General", "StreamPort", c.StreamPort), 1024, 65535);
+            c.CheckUpdates = ini.GetBool("General", "CheckUpdates", c.CheckUpdates);
 
             c.HostName = ini.Get("Host", "HostName", c.HostName);
             c.Game = ini.Get("Host", "Game", c.Game);

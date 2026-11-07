@@ -120,6 +120,7 @@ namespace LanPad.UI
             base.OnShown(e);
             if (startMode == StartMode.Host) StartHost();
             else if (startMode == StartMode.Join) OpenJoin(startJoinAddress);
+            if (cfg.CheckUpdates) _ = CheckForUpdate(false);
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -296,7 +297,9 @@ namespace LanPad.UI
             string version = Application.ProductVersion.Split('+')[0];
             var tagline = NewLabel($"Local multiplayer over LAN   ·   v{version}", 11f, FontStyle.Regular, Theme.Muted);
             tagline.Margin = new Padding(3, 0, 0, 0);
-            var hero = Row(logo, Stack(title, tagline));
+            var credit = NewLabel("Created by Raptech Solution", 9.5f, FontStyle.Bold, Theme.Accent);
+            credit.Margin = new Padding(4, 2, 0, 0);
+            var hero = Row(logo, Stack(title, tagline, credit));
             hero.Margin = new Padding(0, 6, 0, 14);
             col.Controls.Add(hero);
 
@@ -324,8 +327,12 @@ namespace LanPad.UI
                                   10f, Theme.Text));
 
             var settings = NewButton("⚙  Settings", (s, e) => OpenSettings(), ButtonKind.Secondary, 150);
-            settings.Margin = new Padding(0, 16, 0, 0);
-            col.Controls.Add(settings);
+            settings.Margin = new Padding(0, 16, 10, 0);
+            updateButton = NewButton("Check for updates", (s, e) => UpdateClicked(), ButtonKind.Ghost, 200);
+            updateButton.Margin = new Padding(0, 16, 10, 0);
+            updateStatus = NewLabel("", 9.5f, FontStyle.Regular, Theme.Muted);
+            updateStatus.Margin = new Padding(0, 26, 0, 0);
+            col.Controls.Add(Row(settings, updateButton, updateStatus));
 
             if (warnings.Count > 0)
             {
@@ -335,6 +342,71 @@ namespace LanPad.UI
             var paths = Para($"Settings: {AppPaths.ConfigFile}\nLog: {Log.FilePath}", 8.5f, Theme.Blend(Theme.Muted, Theme.Back, 0.25f));
             paths.Margin = new Padding(0, 18, 0, 0);
             col.Controls.Add(paths);
+        }
+
+        // ---------------------------------------------------------------- updates (GitHub releases)
+
+        FlatButton updateButton;
+        Label updateStatus;
+        Updater.UpdateInfo pendingUpdate;
+        bool updateBusy;
+
+        void ShowUpdateStatus(string text, Color color)
+        {
+            updateStatus.Text = text;
+            updateStatus.ForeColor = color;
+        }
+
+        async Task CheckForUpdate(bool userAsked)
+        {
+            if (updateBusy) return;
+            updateBusy = true;
+            if (userAsked) ShowUpdateStatus("Checking...", Theme.Muted);
+            var info = await Updater.CheckAsync();
+            updateBusy = false;
+            if (IsDisposed) return;
+            if (info != null && Updater.IsNewer(info.Version, Updater.Current))
+            {
+                pendingUpdate = info;
+                updateButton.Text = $"Update to v{info.Version}";
+                updateButton.Kind = ButtonKind.Primary;
+                updateButton.Invalidate();
+                ShowUpdateStatus("A new version is available", Theme.Good);
+            }
+            else if (userAsked)
+                ShowUpdateStatus(info == null ? "Could not reach GitHub (no internet?)" : $"✔ v{Updater.Current} is the latest",
+                                 info == null ? Theme.Warn : Theme.Good);
+        }
+
+        async void UpdateClicked()
+        {
+            if (pendingUpdate == null) { await CheckForUpdate(true); return; }
+            if (updateBusy) return;
+            if ((server != null || client != null) &&
+                MessageBox.Show(this, "Updating closes LanPad and ends the current game for everyone. Update now?", "LanPad update",
+                                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+
+            updateBusy = true;
+            updateButton.Enabled = false;
+            try
+            {
+                var progress = new Progress<int>(p => ShowUpdateStatus($"Downloading v{pendingUpdate.Version}... {p}%", Theme.Muted));
+                string setup = await Updater.DownloadAsync(pendingUpdate, progress);
+                ShowUpdateStatus("Installing... LanPad restarts by itself", Theme.Muted);
+                if (Updater.RunSetup(setup)) { Close(); return; }
+                ShowUpdateStatus("Update cancelled (the setup needs admin)", Theme.Warn);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Update failed", ex);
+                ShowUpdateStatus("Update failed: " + ex.Message, Theme.Bad);
+            }
+            finally
+            {
+                updateBusy = false;
+                if (!IsDisposed) updateButton.Enabled = true;
+            }
         }
 
         // ---------------------------------------------------------------- settings

@@ -38,6 +38,7 @@ namespace LanPad
                 PacketTests();
                 KeyMapTests();
                 ConfigTests();
+                UpdateTests();
                 GameTests();
                 NetworkTests();
                 GameSwitchTests();
@@ -183,6 +184,41 @@ namespace LanPad
             Check(KeyMap.TryParseKeyList("Enter", out var k4, out _) && k4[0] == Keys.Return, "keys: Enter alias");
             Check(!KeyMap.TryParseKeyList("Banana", out _, out _), "keys: unknown key rejected");
             Check(KeyMap.TryParseKeyList("", out var k5, out _) && k5.Length == 0, "keys: empty = no key");
+        }
+
+        // ------------------------------------------------------------------ updater
+
+        static void UpdateTests()
+        {
+            Check(Updater.ParseVersion("v0.3.4") == new Version(0, 3, 4), "update: tag v0.3.4 parsed");
+            Check(Updater.ParseVersion("0.4") == new Version(0, 4, 0), "update: tag 0.4 parsed as 0.4.0");
+            Check(Updater.ParseVersion("1.2.3+abc") == new Version(1, 2, 3), "update: build metadata ignored");
+            Check(Updater.ParseVersion("latest") == null, "update: bad tag gives null");
+            Check(Updater.IsNewer(new Version(0, 4, 0), new Version(0, 3, 4)), "update: 0.4.0 is newer than 0.3.4");
+            Check(!Updater.IsNewer(new Version(0, 3, 4), new Version(0, 3, 4)), "update: same version is not newer");
+            Check(!Updater.IsNewer(new Version(0, 3, 3), new Version(0, 3, 4)), "update: older version is not newer");
+            Check(!Updater.IsNewer(null, new Version(0, 3, 4)), "update: unknown version is not newer");
+
+            string json = "{\"tag_name\":\"v0.4.0\",\"html_url\":\"https://github.com/x/LanPad/releases/tag/v0.4.0\"," +
+                          "\"assets\":[{\"name\":\"notes.txt\",\"browser_download_url\":\"https://example/notes.txt\"}," +
+                          "{\"name\":\"LanPad-Setup-0.4.0.exe\",\"size\":95000000,\"digest\":\"sha256:ABCDEF0123\"," +
+                          "\"browser_download_url\":\"https://example/LanPad-Setup-0.4.0.exe\"}]}";
+            var info = Updater.ParseRelease(json);
+            Check(info != null && info.Version == new Version(0, 4, 0), "update: release version read");
+            Check(info != null && info.SetupUrl == "https://example/LanPad-Setup-0.4.0.exe", "update: setup exe asset picked");
+            Check(info != null && info.Sha256 == "abcdef0123", "update: sha256 digest read (lower case)");
+            Check(info != null && info.Size == 95000000, "update: setup size read");
+            Check(info != null && info.PageUrl.EndsWith("/v0.4.0"), "update: release page read");
+            Check(Updater.ParseRelease("{\"tag_name\":\"v0.4.0\",\"assets\":[]}") == null, "update: release without setup exe ignored");
+            Check(Updater.ParseRelease("not json") == null, "update: bad json gives null");
+
+            string tmp = Path.Combine(Path.GetTempPath(), "lanpad-selftest-sha.bin");
+            File.WriteAllText(tmp, "abc");
+            Check(Updater.FileSha256(tmp) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "update: sha256 of a file");
+            File.Delete(tmp);
+
+            var cfg = LanPadConfig.Load(Path.Combine(Path.GetTempPath(), "lanpad-no-such.ini"), new List<string>());
+            Check(cfg.CheckUpdates, "update: CheckUpdates on by default");
         }
 
         // ------------------------------------------------------------------ config

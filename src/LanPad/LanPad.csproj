@@ -10,8 +10,11 @@
     <Prefer32Bit>false</Prefer32Bit>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>LanPad.ico</ApplicationIcon>
-    <Version>0.3.4</Version>
+    <Version>0.4.0</Version>
     <Product>LanPad</Product>
+    <Company>Raptech Solution</Company>
+    <Authors>Raptech Solution</Authors>
+    <Copyright>Created by Raptech Solution</Copyright>
     <Description>LAN keyboard-to-controller and screen stream for local multiplayer games</Description>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -20,6 +23,7 @@
   <ItemGroup>
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.Web.Extensions" />
   </ItemGroup>
 
   <ItemGroup>

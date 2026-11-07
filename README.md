@@ -1,5 +1,36 @@
 # LanPad — play local-multiplayer games on different PCs over LAN
 
+**Created by Raptech Solution**
+
+[![Latest release](https://img.shields.io/github/v/release/Ralph313-creator/LanPad)](https://github.com/Ralph313-creator/LanPad/releases/latest)
+
+## Install
+
+Open **PowerShell** and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/Ralph313-creator/LanPad/main/install.ps1 | iex
+```
+
+It downloads the latest `LanPad-Setup-<version>.exe` from [Releases](https://github.com/Ralph313-creator/LanPad/releases),
+checks its SHA-256 and installs it (Windows asks for admin). Run the same line again to update.
+Want the setup wizard instead? `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Ralph313-creator/LanPad/main/install.ps1))) -Wizard`
+— or just download the setup exe from the latest release and run it.
+
+Needs Windows 10/11 64-bit. The installer adds the ViGEmBus driver, firewall rules and shortcuts (details below).
+
+## Updates
+
+LanPad looks for a new release when it opens (only if the PC has internet — on an offline LAN nothing happens).
+When there is one, the start screen shows **Update to v…**: click it, LanPad downloads the setup (SHA-256 checked),
+installs it, and opens again. **Check for updates** on the start screen checks right away.
+Your `lanpad.ini` and `games.user.ini` are kept. Turn the automatic check off with `CheckUpdates=false` in `lanpad.ini`.
+
+**Diskless (CCBoot) shops:** an update on a normal client PC is lost at the next reboot. Update the
+**super-client** (image write mode) and save the image, so every PC gets it.
+
+## About
+
 Games like **NBA 2K14** only have local multiplayer: keyboard = player 1, each Xbox controller = one more player.
 LanPad lets players sit at **different PCs**:
 
@@ -97,6 +128,7 @@ with Ctrl / Shift / Alt if you like (e.g. `Ctrl+F12`). The controller keys thems
 
 Other settings:
 
+- `CheckUpdates=true` (look for a new LanPad on GitHub at start; `false` = never)
 - `RoomPin=random` (new PIN each time), `off`, or a fixed number like `1234`
 - `Game=NBA 2K14` (last picked game), `GameFolders=G:\Offline Games;D:\Games;...` (where games are searched)
 - `HostPlays=true` (the host keyboard is a player; `false` = all players join from other PCs), `MaxPlayers=4`
@@ -146,3 +178,7 @@ mpv 2026-10-19 (shinchiro build), ViGEmBus 1.22.0 (signed by Nefarius Software S
 ## Uninstall the driver
 
 Settings → Apps → **ViGEm Bus Driver** → Uninstall.
+
+---
+
+LanPad — Created by Raptech Solution.

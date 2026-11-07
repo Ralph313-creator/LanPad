@@ -19,7 +19,12 @@ AppId={{D0C8B206-9B06-4C19-8A5A-5739687366C6}
 AppName=LanPad
 AppVersion={#AppVersion}
 AppVerName=LanPad {#AppVersion}
-AppPublisher=RapTech
+AppPublisher=Raptech Solution
+AppPublisherURL=https://github.com/Ralph313-creator/LanPad
+AppSupportURL=https://github.com/Ralph313-creator/LanPad/issues
+AppUpdatesURL=https://github.com/Ralph313-creator/LanPad/releases
+AppCopyright=Created by Raptech Solution
+VersionInfoCompany=Raptech Solution
 AppComments=Play local multiplayer games on different PCs over LAN
 VersionInfoVersion={#AppVersion}
 DefaultDirName=C:\LanPad
@@ -44,6 +49,9 @@ RestartApplications=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Messages]
+WelcomeLabel2=This will install [name/ver] on your computer.%n%nCreated by Raptech Solution.%n%nIt is recommended that you close all other applications before continuing.
 
 [Tasks]
 Name: "driver"; Description: "Install the virtual Xbox controller driver (ViGEmBus) - needed to host"; Check: NeedsViGEm
@@ -77,6 +85,8 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""L
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""LanPad stream viewer (mpv)"" dir=in action=allow protocol=UDP profile=any program=""{app}\tools\mpv\mpv.exe"""; Flags: runhidden; Tasks: firewall
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""LanPad stream viewer (ffplay)"" dir=in action=allow protocol=UDP profile=any program=""{app}\tools\ffplay.exe"""; Flags: runhidden; Tasks: firewall
 Filename: "{app}\LanPad.exe"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,LanPad}"; Flags: nowait postinstall skipifsilent
+; in-app updater: LanPad runs this setup with /SILENT /LAUNCH=1 and closes itself; start it again as the signed-in user
+Filename: "{app}\LanPad.exe"; WorkingDir: "{app}"; Flags: nowait runasoriginaluser; Check: LaunchAfterUpdate
 
 [UninstallRun]
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""LanPad (host and join)"""; Flags: runhidden; RunOnceId: "DelFwHost"
@@ -87,6 +97,11 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 Type: files; Name: "{app}\selftest.log"
 
 [Code]
+function LaunchAfterUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:LAUNCH|0}') = '1';
+end;
+
 function NeedsViGEm: Boolean;
 begin
   Result := not RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Services\ViGEmBus');
