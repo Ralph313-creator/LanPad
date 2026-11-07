@@ -179,6 +179,12 @@ mpv 2026-10-19 (shinchiro build), ViGEmBus 1.22.0 (signed by Nefarius Software S
 
 Settings → Apps → **ViGEm Bus Driver** → Uninstall.
 
+
+## License
+
+LanPad is MIT licensed (see [LICENSE](LICENSE)): use it, change it and share it, but keep the "Raptech Solution" copyright notice.
+The third-party tools in the installer (FFmpeg, mpv, ViGEmBus) keep their own licenses.
+
 ---
 
 LanPad — Created by Raptech Solution.
